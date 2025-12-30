@@ -1,0 +1,5 @@
+package com.blog.global.web
+
+@Target(AnnotationTarget.VALUE_PARAMETER)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class CurrentUser
