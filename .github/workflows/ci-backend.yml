@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create .env file
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          ${{ secrets.DOT_ENV_BE }}
+          EOF
+          echo "✅ .env file created"
+
+      - name: Export env vars
+        shell: bash
+        run: |
+          # 주석/빈 줄 제거 후 GitHub Actions 환경변수로 등록
+          sed '/^\s*#/d;/^\s*$/d' .env >> "$GITHUB_ENV"
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
