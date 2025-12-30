@@ -1,0 +1,44 @@
+name: CI - Backend
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/ci-backend.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/ci-backend.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission
+        run: chmod +x ./gradlew
+
+      - name: Generate jOOQ
+        run: ./gradlew generateJooq
+
+      - name: Test
+        run: ./gradlew test
+
+      - name: Build
+        run: ./gradlew build
