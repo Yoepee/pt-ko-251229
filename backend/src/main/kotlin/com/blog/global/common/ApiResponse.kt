@@ -3,7 +3,7 @@ package com.blog.global.common
 data class ApiResponse<T>(
     val status: Int,
     val message: String,
-    val data: T? = null
+    val data: T? = null,
 ) {
     companion object {
         fun <T> ok(data: T? = null, message: String = "OK") =
