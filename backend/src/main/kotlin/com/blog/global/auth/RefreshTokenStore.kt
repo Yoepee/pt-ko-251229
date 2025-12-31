@@ -6,11 +6,22 @@ import java.time.Duration
 
 @Service
 class RefreshTokenStore(private val redis: StringRedisTemplate) {
+
     fun save(jti: String, userId: Long, ttlSec: Long) {
-        redis.opsForValue().set("refresh:$jti", userId.toString(), Duration.ofSeconds(ttlSec))
+        redis.opsForValue().set(key(jti), userId.toString(), Duration.ofSeconds(ttlSec))
     }
 
-    fun exists(jti: String): Boolean = redis.hasKey("refresh:$jti")
+    fun exists(jti: String): Boolean =
+        redis.hasKey(key(jti)) == true
 
-    fun delete(jti: String) { redis.delete("refresh:$jti") }
+    fun delete(jti: String) {
+        redis.delete(key(jti))
+    }
+
+    fun rotate(oldJti: String, newJti: String, userId: Long, ttlSec: Long) {
+        delete(oldJti)
+        save(newJti, userId, ttlSec)
+    }
+
+    private fun key(jti: String) = "refresh:$jti"
 }
