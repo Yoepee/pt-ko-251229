@@ -1,8 +1,19 @@
 import { apiClient } from './axios';
 
+interface SignupRequest {
+  username: string;
+  password: string;
+  nickname: string;
+}
+
+interface LoginRequest {
+  username: string;
+  password: string;
+}
+
 export const authApi = {
-  signup: (data: any) => apiClient.post('/api/v1/auth/signup', data),
-  login: (data: any) => apiClient.post('/api/v1/auth/login', data),
+  signup: (data: SignupRequest) => apiClient.post('/api/v1/auth/signup', data),
+  login: (data: LoginRequest) => apiClient.post('/api/v1/auth/login', data),
   logout: () => apiClient.post('/api/v1/auth/logout'),
   me: () => apiClient.get('/api/v1/auth/me').then((res) => res.data.data),
   withdraw: () => apiClient.post('/api/v1/auth/withdraw'),
