@@ -28,6 +28,12 @@ class GlobalExceptionHandler {
         }
     }
 
+    private fun logValidation(e: MethodArgumentNotValidException, req: HttpServletRequest) {
+        val field = e.bindingResult.fieldErrors.firstOrNull()?.field
+        val detail = e.bindingResult.fieldErrors.joinToString { "${it.field}:${it.defaultMessage}" }
+        log.warn("VALIDATION FAIL [{} {}] field={} detail={}", req.method, req.requestURI, field, detail)
+    }
+
 
     @ExceptionHandler(ApiException::class)
     fun handleApiException(e: ApiException, req: HttpServletRequest): ResponseEntity<ApiResponse<Nothing>> {
@@ -40,7 +46,7 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidation(e: MethodArgumentNotValidException, req: HttpServletRequest): ResponseEntity<ApiResponse<Nothing>> {
         val msg = e.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: ErrorCode.INVALID_REQUEST.message
-        logError(e, req, 400)
+        logValidation(e, req)
         return ResponseEntity
             .status(400)
             .body(ApiResponse.fail(status = 400, message = msg))
