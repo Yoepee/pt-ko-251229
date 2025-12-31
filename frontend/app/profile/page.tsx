@@ -83,12 +83,16 @@ export default function Profile() {
     mutationFn: authApi.withdraw,
     onSuccess: () => {
       close();
-      logout(); 
+      // Manual Client Logout since session is gone
+      useUserStore.getState().logout();
+      queryClient.setQueryData(queryKeys.auth.me.queryKey, null);
+      
       notifications.show({
         title: 'Account Deleted',
         message: 'Your account has been successfully deleted',
         color: 'blue',
       });
+      router.push('/login');
     },
   });
 
