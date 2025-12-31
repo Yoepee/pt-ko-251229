@@ -16,6 +16,7 @@ import com.blog.global.security.JwtProvider
 import com.blog.global.util.AuthCookieManager
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
+import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 
@@ -32,25 +33,25 @@ class AuthController(
 ) {
 
     @PostMapping("/signup")
-    fun signup(@Valid @RequestBody req: SignUpRequest): ApiResponse<Long> {
+    fun signup(@Valid @RequestBody req: SignUpRequest): ResponseEntity<ApiResponse<Long>> {
         val id = userService.signUp(req.username, req.password, req.nickname)
-        return ApiResponse.created(data = id, message = "회원가입 완료")
+        return ResponseEntity.status(201).body(ApiResponse.created(data = id, message = "회원가입 완료"))
     }
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody req: LoginRequest, res: HttpServletResponse): ApiResponse<Unit> {
+    fun login(@Valid @RequestBody req: LoginRequest, res: HttpServletResponse): ResponseEntity<ApiResponse<Unit>> {
         val pair = authService.login(req.username, req.password)
 
         cookies.setAccess(res, pair.accessToken, jwtProps.accessExpireSeconds)
         cookies.setRefresh(res, pair.refreshToken, jwtProps.refreshExpireSeconds)
-        return ApiResponse.ok(message = "로그인 성공")
+        return ResponseEntity.ok(ApiResponse.ok(message = "로그인 성공"))
     }
 
     @PostMapping("/logout")
     fun logout(
         @CookieValue(name = "refresh_token", required = false) refresh: String?,
         res: HttpServletResponse
-    ): ApiResponse<Unit> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         if (!refresh.isNullOrBlank()) {
             runCatching {
                 val parsed = jwtProvider.parseRefresh(refresh)
@@ -58,22 +59,22 @@ class AuthController(
             }
         }
         cookies.clear(res)
-        return ApiResponse.ok(message = "로그아웃 완료")
+        return ResponseEntity.ok(ApiResponse.ok(message = "로그아웃 완료"))
     }
 
     @GetMapping("/me")
-    fun me(@AuthenticationPrincipal principal: JwtPrincipal): ApiResponse<MeResponse> {
+    fun me(@AuthenticationPrincipal principal: JwtPrincipal): ResponseEntity<ApiResponse<MeResponse>> {
         val me = authService.me(principal.userId)
-        return ApiResponse.ok(data = me)
+        return ResponseEntity.ok(ApiResponse.ok(data = me))
     }
 
     @PatchMapping("/me/nickname")
     fun changeNickname(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @Valid @RequestBody req: ChangeNicknameRequest
-    ): ApiResponse<Unit> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         userService.changeNickname(principal.userId, req.nickname)
-        return ApiResponse.ok(message = "닉네임 변경 완료")
+        return ResponseEntity.ok(ApiResponse.ok(message = "닉네임 변경 완료"))
     }
 
     @PatchMapping("/me/password")
@@ -81,11 +82,11 @@ class AuthController(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @Valid @RequestBody req: ChangePasswordRequest,
         res: HttpServletResponse
-    ): ApiResponse<Unit> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         userService.changePassword(principal.userId, req.currentPassword, req.newPassword)
         userStateStore.bumpVersion(principal.userId)
         cookies.clear(res)
-        return ApiResponse.ok(message = "비밀번호 변경 완료")
+        return ResponseEntity.ok(ApiResponse.ok(message = "비밀번호 변경 완료"))
     }
 
     @PostMapping("/withdraw")
@@ -93,9 +94,9 @@ class AuthController(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @CookieValue(name = "refresh_token", required = false) refresh: String?,
         res: HttpServletResponse
-    ): ApiResponse<Unit> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         authService.withdraw(principal.userId, refresh)
         cookies.clear(res)
-        return ApiResponse.ok(message = "회원탈퇴 완료")
+        return ResponseEntity.ok(ApiResponse.ok(message = "회원탈퇴 완료"))
     }
 }

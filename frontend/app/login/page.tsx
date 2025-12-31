@@ -1,8 +1,27 @@
 'use client';
 
+import { useAuth } from '@/hooks/useAuth';
 import { Anchor, Button, Container, Paper, PasswordInput, Text, TextInput, Title } from '@mantine/core';
+import { useForm } from '@mantine/form';
 
 export default function Login() {
+  const { login, isLoginPending } = useAuth();
+  
+  const form = useForm({
+    initialValues: {
+      username: '',
+      password: '',
+    },
+    validate: {
+      username: (value) => (value.length < 2 ? 'Username is too short' : null),
+      password: (value) => (value.length < 6 ? 'Password must be at least 6 characters' : null),
+    },
+  });
+
+  const handleSubmit = (values: typeof form.values) => {
+    login(values);
+  };
+
   return (
     <Container size="xs" py={120}>
       <div className="text-center mb-8">
@@ -11,13 +30,14 @@ export default function Login() {
       </div>
 
       <Paper radius="xl" p="xl" withBorder className="bg-white/80 backdrop-blur-md">
-        <form onSubmit={(e) => e.preventDefault()}>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
           <TextInput
-            label="Email"
-            placeholder="you@example.com"
+            label="Username"
+            placeholder="Enter your username"
             required
             radius="md"
             mb="md"
+            {...form.getInputProps('username')}
           />
           <PasswordInput
             label="Password"
@@ -25,8 +45,16 @@ export default function Login() {
             required
             radius="md"
             mb="xl"
+            {...form.getInputProps('password')}
           />
-          <Button fullWidth mt="xl" size="lg" radius="xl">
+          <Button 
+            fullWidth 
+            mt="xl" 
+            size="lg" 
+            radius="xl" 
+            type="submit"
+            loading={isLoginPending}
+          >
             Sign in
           </Button>
         </form>
