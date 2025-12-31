@@ -6,6 +6,8 @@ import com.blog.global.util.AuthCookieManager
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
+import org.slf4j.MDC
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -21,6 +23,8 @@ class JwtAuthFilter(
     private val userStateStore: AuthUserStateStore,
 ) : OncePerRequestFilter() {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -30,12 +34,19 @@ class JwtAuthFilter(
         val access = cookieList.firstOrNull { it.name == "access_token" }?.value
         val refresh = cookieList.firstOrNull { it.name == "refresh_token" }?.value
 
+        val traceId = MDC.get("traceId") ?: "-"
+        val uri = request.requestURI
+        val method = request.method
+
         if (!access.isNullOrBlank()) {
             val principal = jwt.tryParseAccess(access)
             if (principal != null && isActiveAndVersionOk(principal)) {
                 setAuth(principal)
+                log.debug("AUTH OK (access) [{} {}] userId={} traceId={}", method, uri, principal.userId, traceId)
                 filterChain.doFilter(request, response)
                 return
+            } else {
+                log.debug("AUTH FAIL (access) [{} {}] traceId={}", method, uri, traceId)
             }
         }
 
@@ -43,9 +54,15 @@ class JwtAuthFilter(
             runCatching {
                 val parsed = jwt.parseRefresh(refresh)
 
-                if (!refreshStore.exists(parsed.jti)) return@runCatching
+                if (!refreshStore.exists(parsed.jti)) {
+                    log.debug("REFRESH FAIL (not found jti) userId={} traceId={}", parsed.principal.userId, traceId)
+                    return@runCatching
+                }
 
-                if (!isActiveAndVersionOk(parsed.principal)) return@runCatching
+                if (!isActiveAndVersionOk(parsed.principal)) {
+                    log.debug("REFRESH FAIL (tokenVersion mismatch) userId={} traceId={}", parsed.principal.userId, traceId)
+                    return@runCatching
+                }
 
                 val newAccess = jwt.createAccessToken(
                     userId = parsed.principal.userId,
@@ -72,6 +89,11 @@ class JwtAuthFilter(
                 cookies.setRefresh(response, newRefresh, props.refreshExpireSeconds)
 
                 setAuth(parsed.principal)
+
+                log.info("REFRESH OK (rotated) userId={} traceId={}", parsed.principal.userId, traceId)
+            }.onFailure { ex ->
+                // parse 실패/redis 오류 같은 케이스
+                log.debug("REFRESH ERROR [{} {}] traceId={} msg={}", method, uri, traceId, ex.message)
             }
         }
 
