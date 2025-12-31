@@ -1,4 +1,4 @@
-package com.blog.domain.user.dto
+package com.blog.domain.user.dto.request
 
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -13,6 +13,6 @@ data class SignUpRequest(
     val password: String,
 
     @field:NotBlank
-    @field:Size(min = 4, max = 30)
+    @field:Size(min = 2, max = 30)
     val nickname: String
 )

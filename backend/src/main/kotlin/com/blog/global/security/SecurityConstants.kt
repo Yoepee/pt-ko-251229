@@ -47,7 +47,11 @@ object SecurityConstants {
         // websocket handshake 경로
         "/ws-chat/**",
 
-        "/hikari-status"
+        "/hikari-status",
+
+        // 회원 기능
+        "/api/v1/auth/signup",
+        "/api/v1/auth/login"
     )
 
     // CORS를 적용할 경로
