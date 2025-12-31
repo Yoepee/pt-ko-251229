@@ -42,7 +42,7 @@ export default function Home() {
       {/* increased height for impact, removed top text */}
       <div className="w-full h-[85vh] relative mb-20">
          <iframe 
-            src='https://my.spline.design/r4xbot-I6h8m8Rh1kuPFOBEjfXIeSon/' 
+            src='https://my.spline.design/yoepeeblog-WSnoSNWDZ6MEqgNmQfBrUOnb/' 
             frameBorder='0' 
             width='100%' 
             height='100%'
