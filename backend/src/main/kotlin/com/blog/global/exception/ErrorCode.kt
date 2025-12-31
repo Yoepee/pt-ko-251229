@@ -17,4 +17,12 @@ enum class ErrorCode(
 
     PASSWORD_MISMATCH(400, "현재 비밀번호가 일치하지 않습니다."),
     SAME_PASSWORD_NOT_ALLOWED(400, "기존 비밀번호와 동일한 비밀번호는 사용할 수 없습니다."),
+
+    // Category
+    CATEGORY_NOT_FOUND(404, "카테고리를 찾을 수 없습니다."),
+    CATEGORY_INVALID_PARENT(400, "잘못된 부모 카테고리입니다."),
+    CATEGORY_DELETE_FORBIDDEN_HAS_CHILD(409, "하위 카테고리가 존재하여 삭제할 수 없습니다."),
+    CATEGORY_DELETE_FORBIDDEN_HAS_POST(409, "카테고리에 연결된 게시글이 존재하여 삭제할 수 없습니다."),
+    CATEGORY_NAME_DUPLICATED(409, "이미 존재하는 카테고리 이름입니다."),
+    CATEGORY_SLUG_DUPLICATED(409, "이미 존재하는 카테고리 슬러그입니다."),
 }
