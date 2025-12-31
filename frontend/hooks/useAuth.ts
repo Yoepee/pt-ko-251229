@@ -5,6 +5,7 @@ import { queryKeys } from '@/lib/queryKeys';
 import { useUserStore } from '@/store/userStore';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -38,7 +39,7 @@ export function useAuth() {
       });
       router.push('/');
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ message: string }>) => {
       notifications.show({
         title: 'Login Failed',
         message: error.response?.data?.message || 'Invalid username or password.',
@@ -57,7 +58,7 @@ export function useAuth() {
       });
       router.push('/login');
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ message: string }>) => {
       notifications.show({
         title: 'Registration Failed',
         message: error.response?.data?.message || 'Something went wrong during registration.',
