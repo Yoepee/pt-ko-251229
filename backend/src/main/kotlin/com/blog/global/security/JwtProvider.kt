@@ -1,6 +1,5 @@
 package com.blog.global.security
 
-import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.stereotype.Component
@@ -13,12 +12,12 @@ class JwtProvider(
     data class ParsedRefresh(val jti: String, val principal: JwtPrincipal)
     private val key = Keys.hmacShaKeyFor(props.secret.toByteArray())
 
-    fun createAccessToken(userId: Long, username: String, roles: List<String>): String =
-        createToken("access", userId, username, roles, props.accessExpireSeconds)
+    fun createAccessToken(userId: Long, username: String, roles: List<String>, tokenVersion: Long): String =
+        createToken("access", userId, username, roles, props.accessExpireSeconds, tokenVersion)
 
-    fun createRefreshToken(userId: Long, username: String, roles: List<String>): Pair<String, String> {
+    fun createRefreshToken(userId: Long, username: String, roles: List<String>, tokenVersion: Long): Pair<String, String> {
         val jti = UUID.randomUUID().toString()
-        val token = createToken("refresh", userId, username, roles, props.refreshExpireSeconds, jti)
+        val token = createToken("refresh", userId, username, roles, props.refreshExpireSeconds, tokenVersion, jti)
         return token to jti
     }
 
@@ -28,6 +27,7 @@ class JwtProvider(
         username: String,
         roles: List<String>,
         expireSeconds: Long,
+        tokenVersion: Long,
         jti: String? = null
     ): String {
         val now = Date()
@@ -38,6 +38,7 @@ class JwtProvider(
             .claim("typ", typ)
             .claim("username", username)
             .claim("roles", roles)
+            .claim("ver", tokenVersion)
             .issuedAt(now)
             .expiration(exp)
 
@@ -55,7 +56,7 @@ class JwtProvider(
 
     fun tryParseAccess(token: String): JwtPrincipal? = try {
         parseAccess(token)
-    } catch (e: ExpiredJwtException) {
+    } catch (e: Exception) {
         null
     }
 
@@ -71,6 +72,13 @@ class JwtProvider(
         val userId = claims.subject.toLong()
         val username = claims["username"].toString()
         val roles = (claims["roles"] as? List<*>)?.map { it.toString() } ?: emptyList()
-        return JwtPrincipal(userId, username, roles)
+
+        val ver = when (val v = claims["ver"]) {
+            is Number -> v.toLong()
+            is String -> v.toLongOrNull() ?: 0L
+            else -> 0L
+        }
+
+        return JwtPrincipal(userId, username, roles, tokenVersion = ver)
     }
 }

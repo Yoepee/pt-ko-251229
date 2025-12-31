@@ -27,35 +27,61 @@ val jooqVersion = "3.20.5"
 extra["jooq.version"] = jooqVersion
 
 dependencies {
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    // Web (MVC)
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+
+    // Security
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-client")
-    implementation("org.springframework.boot:spring-boot-starter-webmvc")
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("tools.jackson.module:jackson-module-kotlin")
+
+    // Data
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+
+    // DB Migration & Monitoring
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+
+    // WebSocket
     implementation("org.springframework.boot:spring-boot-starter-websocket")
+
+    // JOOQ
     implementation("org.springframework.boot:spring-boot-starter-jooq")
-    developmentOnly("org.springframework.boot:spring-boot-devtools")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
-    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-data-redis-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-security-oauth2-client-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    runtimeOnly("com.h2database:h2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // Kotlin
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+
+    // Jackson
+    implementation("tools.jackson.module:jackson-module-kotlin")
+    implementation("org.springframework.boot:spring-boot-starter-jackson")
+
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
-    // spring doc
+
+    // Swagger
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
-    // ✅ jOOQ Codegen (DDLDatabase용)
+
+    // Dev
+    developmentOnly("org.springframework.boot:spring-boot-devtools")
+
+    // DB Driver
+    runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+    runtimeOnly("com.h2database:h2")
+
+    // Test
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.springframework.boot:spring-boot-starter-data-redis-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-oauth2-client-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+
+    // jOOQ Codegen (DDLDatabase용)
     jooqGenerator("org.jooq:jooq-codegen:$jooqVersion")
     jooqGenerator("org.jooq:jooq-meta:$jooqVersion")
     jooqGenerator("org.jooq:jooq-meta-extensions:$jooqVersion")
