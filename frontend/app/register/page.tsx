@@ -1,8 +1,32 @@
 'use client';
 
+import { useAuth } from '@/hooks/useAuth';
 import { Anchor, Button, Checkbox, Container, Paper, PasswordInput, Text, TextInput, Title } from '@mantine/core';
+import { useForm } from '@mantine/form';
 
 export default function Register() {
+  const { signup, isSignupPending } = useAuth();
+
+  const form = useForm({
+    initialValues: {
+      username: '',
+      password: '',
+      nickname: '',
+      terms: false,
+    },
+    validate: {
+      username: (value) => (value.length < 4 ? 'Username must be at least 4 characters' : null),
+      password: (value) => (value.length < 6 ? 'Password must be at least 6 characters' : null),
+      nickname: (value) => (value.length < 2 ? 'Nickname is too short' : null),
+      terms: (value) => (!value ? 'You must agree to terms' : null),
+    },
+  });
+
+  const handleSubmit = (values: typeof form.values) => {
+    const { terms, ...data } = values;
+    signup(data);
+  };
+
   return (
     <Container size="xs" py={120}>
       <div className="text-center mb-8">
@@ -11,20 +35,22 @@ export default function Register() {
       </div>
 
       <Paper radius="xl" p="xl" withBorder className="bg-white/80 backdrop-blur-md">
-        <form onSubmit={(e) => e.preventDefault()}>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
           <TextInput
-            label="Full Name"
-            placeholder="John Apple"
+            label="Username"
+            placeholder="Choose a username"
             required
             radius="md"
             mb="md"
+            {...form.getInputProps('username')}
           />
           <TextInput
-            label="Email"
-            placeholder="you@example.com"
+            label="Nickname"
+            placeholder="Your display name"
             required
             radius="md"
             mb="md"
+            {...form.getInputProps('nickname')}
           />
           <PasswordInput
             label="Password"
@@ -32,12 +58,20 @@ export default function Register() {
             required
             radius="md"
             mb="md"
+            {...form.getInputProps('password')}
           />
           <Checkbox 
             label="I agree to the terms and conditions"
             mb="xl"
+            {...form.getInputProps('terms', { type: 'checkbox' })}
           />
-          <Button fullWidth size="lg" radius="xl">
+          <Button 
+            fullWidth 
+            size="lg" 
+            radius="xl"
+            type="submit"
+            loading={isSignupPending}
+          >
             Create Account
           </Button>
         </form>
