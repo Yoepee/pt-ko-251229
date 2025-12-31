@@ -1,4 +1,4 @@
-package com.blog.domain.user.dto
+package com.blog.domain.user.dto.response
 
 data class MeResponse(
     val id: Long,

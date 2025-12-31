@@ -14,4 +14,7 @@ enum class ErrorCode(
     USERNAME_DUPLICATED(409, "이미 존재하는 username 입니다."),
     USER_NOT_FOUND(404, "사용자를 찾을 수 없습니다."),
     LOGIN_FAILED(401, "아이디 또는 비밀번호가 올바르지 않습니다."),
+
+    PASSWORD_MISMATCH(400, "현재 비밀번호가 일치하지 않습니다."),
+    SAME_PASSWORD_NOT_ALLOWED(400, "기존 비밀번호와 동일한 비밀번호는 사용할 수 없습니다."),
 }

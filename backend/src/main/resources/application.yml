@@ -19,6 +19,9 @@ logging:
 custom:
   jwt:
     secret: ${CUSTOM__JWT__SECRET_KEY}
-    expire-seconds: 3600
+    access-expire-seconds: 3600
+    refresh-expire-seconds: 604800
+  cookie:
+    secure: false
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}

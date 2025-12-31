@@ -15,3 +15,7 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+
+custom:
+  cookie:
+    secure: false

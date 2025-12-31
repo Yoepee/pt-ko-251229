@@ -40,4 +40,30 @@ class UserService (
         userRepository.findById(userId).orElseThrow {
             ApiException(ErrorCode.USER_NOT_FOUND)
     }
+
+    @Transactional
+    fun changePassword(userId: Long, currentPassword: String, newPassword: String) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ApiException(ErrorCode.USER_NOT_FOUND) }
+
+        // ✅ 현재 비밀번호 검증
+        val matches = passwordEncoder.matches(currentPassword, user.password)
+        if (!matches) {
+            throw ApiException(ErrorCode.PASSWORD_MISMATCH)
+        }
+
+        if (passwordEncoder.matches(newPassword, user.password)) {
+            throw ApiException(ErrorCode.SAME_PASSWORD_NOT_ALLOWED)
+        }
+
+        val encodedPassword: String =
+            requireNotNull(passwordEncoder.encode(newPassword)) { "허용되지 않는 비밀번호 입니다." }
+        user.changePassword(encodedPassword)
+    }
+
+    fun changeNickname(userId: Long, newNickname: String) {
+        val user = findById(userId)
+        user.changeNickname(newNickname)
+        userRepository.save(user)
+    }
 }
