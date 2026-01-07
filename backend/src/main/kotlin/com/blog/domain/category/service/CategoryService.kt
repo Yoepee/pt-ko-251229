@@ -5,16 +5,16 @@ import com.blog.domain.category.dto.request.CategoryUpdateRequest
 import com.blog.domain.category.dto.response.CategoryResponse
 import com.blog.domain.category.entity.Category
 import com.blog.domain.category.repository.CategoryRepository
-import com.blog.domain.post.repository.PostRepository
 import com.blog.global.exception.ApiException
 import com.blog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import com.blog.domain.poll.repository.PollRepository
 
 @Service
 class CategoryService(
     private val categoryRepository: CategoryRepository,
-    private val postRepository: PostRepository,
+    private val pollRepository: PollRepository,
 ) {
 
     @Transactional
@@ -52,9 +52,9 @@ class CategoryService(
         val category = categoryRepository.findById(id)
             .orElseThrow { ApiException(ErrorCode.CATEGORY_NOT_FOUND) }
 
-        // 게시글 연결 존재 시 삭제 불가
-        if (postRepository.existsByCategoryId(category.id)) {
-            throw ApiException(ErrorCode.CATEGORY_DELETE_FORBIDDEN_HAS_POST)
+        // 투표 연결 존재 시 삭제 불가
+        if (pollRepository.existsByCategoryId(category.id)) {
+            throw ApiException(ErrorCode.CATEGORY_DELETE_FORBIDDEN_HAS_POLL)
         }
 
         categoryRepository.delete(category)
