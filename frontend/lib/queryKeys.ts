@@ -4,4 +4,8 @@ const auth = createQueryKeys('auth', {
   me: null,
 });
 
-export const queryKeys = mergeQueryKeys(auth);
+const categories = createQueryKeys('categories', {
+  all: null,
+});
+
+export const queryKeys = mergeQueryKeys(auth, categories);

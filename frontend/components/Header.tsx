@@ -59,6 +59,13 @@ export function Header() {
                 >
                   Profile
                 </Menu.Item>
+                <Menu.Item 
+                  leftSection={<IconUser size={14} />}
+                  component={Link}
+                  href="/category/manage"
+                >
+                  Manage Categories
+                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item 
                   color="red" 
