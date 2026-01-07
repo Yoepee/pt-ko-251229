@@ -2,7 +2,7 @@ package com.blog.domain.category.controller
 
 import com.blog.domain.category.dto.request.CategoryCreateRequest
 import com.blog.domain.category.dto.request.CategoryUpdateRequest
-import com.blog.domain.category.dto.response.CategoryNodeResponse
+import com.blog.domain.category.dto.response.CategoryResponse
 import com.blog.domain.category.service.CategoryService
 import com.blog.global.common.ApiResponse
 import com.blog.global.security.JwtPrincipal
@@ -21,17 +21,18 @@ class CategoryController(
     fun create(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @Valid @RequestBody req: CategoryCreateRequest,
-    ): ResponseEntity<ApiResponse<CategoryNodeResponse>> {
-        val created = categoryService.create(principal.userId, req)
-        return ResponseEntity.status(201).body(ApiResponse.created(data = created, message = "카테고리 생성 완료"))
+    ): ResponseEntity<ApiResponse<CategoryResponse>> {
+        val created = categoryService.create(req)
+        return ResponseEntity.status(201)
+            .body(ApiResponse.created(data = created, message = "카테고리 생성 완료"))
     }
 
     @GetMapping
-    fun listTree(
+    fun list(
         @AuthenticationPrincipal principal: JwtPrincipal,
-    ): ResponseEntity<ApiResponse<List<CategoryNodeResponse>>> {
-        val tree = categoryService.listTree(principal.userId)
-        return ResponseEntity.ok(ApiResponse.ok(data = tree))
+    ): ResponseEntity<ApiResponse<List<CategoryResponse>>> {
+        val list = categoryService.list()
+        return ResponseEntity.ok(ApiResponse.ok(data = list))
     }
 
     @PatchMapping("/{id}")
@@ -39,8 +40,8 @@ class CategoryController(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @PathVariable id: Long,
         @Valid @RequestBody req: CategoryUpdateRequest,
-    ): ResponseEntity<ApiResponse<CategoryNodeResponse>> {
-        val updated = categoryService.update(principal.userId, id, req)
+    ): ResponseEntity<ApiResponse<CategoryResponse>> {
+        val updated = categoryService.update(id, req)
         return ResponseEntity.ok(ApiResponse.ok(data = updated, message = "카테고리 수정 완료"))
     }
 
@@ -49,7 +50,8 @@ class CategoryController(
         @AuthenticationPrincipal principal: JwtPrincipal,
         @PathVariable id: Long,
     ): ResponseEntity<ApiResponse<Unit>> {
-        categoryService.delete(principal.userId, id)
+        categoryService.delete(id)
         return ResponseEntity.ok(ApiResponse.ok(message = "카테고리 삭제 완료"))
     }
 }
+
