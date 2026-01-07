@@ -1,6 +1,6 @@
 'use client';
 
-import { Category, categoryApi } from '@/lib/api';
+import { Category, categoryApi, CreateCategoryRequest, UpdateCategoryRequest } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
 import { ActionIcon, Badge, Button, Container, Group, LoadingOverlay, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
@@ -34,7 +34,7 @@ export default function CategoryManage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => categoryApi.create(data),
+    mutationFn: (data: CreateCategoryRequest) => categoryApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all.queryKey });
       close();
@@ -44,7 +44,7 @@ export default function CategoryManage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => categoryApi.update(editingCategory!.id, data),
+    mutationFn: (data: UpdateCategoryRequest) => categoryApi.update(editingCategory!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all.queryKey });
       close();
