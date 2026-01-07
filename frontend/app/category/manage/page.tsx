@@ -1,9 +1,37 @@
 'use client';
 
 import { Category, categoryApi, CreateCategoryRequest, UpdateCategoryRequest } from '@/lib/api';
-// ... imports
+import { queryKeys } from '@/lib/queryKeys';
+import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
+import { ActionIcon, Badge, Button, Container, Group, LoadingOverlay, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
+import { IconEdit, IconGripVertical, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
-// ... inside component
+export default function CategoryManage() {
+  const queryClient = useQueryClient();
+  const [opened, { open, close }] = useDisclosure(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+
+  const { data: categories, isLoading } = useQuery({
+    queryKey: queryKeys.categories.all.queryKey,
+    queryFn: categoryApi.getAll,
+  });
+
+  const form = useForm({
+    initialValues: {
+      name: '',
+      slug: '',
+      sortOrder: 0,
+    },
+    validate: {
+      name: (v) => (v.length < 1 ? 'Name required' : null),
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: CreateCategoryRequest) => categoryApi.create(data),
