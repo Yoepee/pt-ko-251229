@@ -23,7 +23,7 @@ repositories {
     mavenCentral()
 }
 
-val jooqVersion = "3.20.5"
+val jooqVersion = "3.20.10"
 extra["jooq.version"] = jooqVersion
 
 dependencies {
@@ -47,6 +47,7 @@ dependencies {
 
     // JOOQ
     implementation("org.springframework.boot:spring-boot-starter-jooq")
+    implementation("org.jooq:jooq:${jooqVersion}")
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
