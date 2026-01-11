@@ -7,12 +7,14 @@ import com.blog.domain.poll.dto.request.VoteRequest
 import com.blog.domain.poll.dto.response.PollCreateResponse
 import com.blog.domain.poll.dto.response.PollDetailResponse
 import com.blog.domain.poll.dto.response.PollSummaryResponse
+import com.blog.domain.poll.dto.response.VoteResult
 import com.blog.domain.poll.service.PollService
 import com.blog.global.common.ApiResponse
 import com.blog.global.common.PageResponse
 import com.blog.global.security.JwtPrincipal
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import org.jooq.impl.Internal.result
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
 import org.springframework.http.ResponseEntity
@@ -80,13 +82,20 @@ class PollController(
         @Valid @RequestBody req: VoteRequest,
         httpReq: HttpServletRequest,
     ): ResponseEntity<ApiResponse<Unit>> {
-        if (principal != null) {
+        val result = if (principal != null) {
             pollService.voteAsUser(pollId, principal.userId, req)
         } else {
             val anonKey = deriveAnonymousKey(httpReq)
             pollService.voteAsAnonymous(pollId, anonKey, req)
         }
-        return ResponseEntity.ok(ApiResponse.ok(message = "투표 완료"))
+
+        val message = when (result) {
+            VoteResult.CREATED -> "투표 완료"
+            VoteResult.CHANGED -> "투표가 변경되었습니다"
+            VoteResult.UNCHANGED -> "이미 동일한 선택지로 투표되어 있습니다"
+        }
+
+        return ResponseEntity.ok(ApiResponse.ok(message = message))
     }
 
     private fun deriveAnonymousKey(req: HttpServletRequest): String {

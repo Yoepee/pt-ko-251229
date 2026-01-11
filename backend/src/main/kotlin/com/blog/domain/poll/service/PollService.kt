@@ -11,6 +11,7 @@ import com.blog.domain.poll.dto.response.PollPreview
 import com.blog.domain.poll.dto.response.PollResultsResponse
 import com.blog.domain.poll.dto.response.PollSummaryResponse
 import com.blog.domain.poll.dto.response.PollStatsPreview
+import com.blog.domain.poll.dto.response.VoteResult
 import com.blog.domain.poll.entity.Poll
 import com.blog.domain.poll.entity.PollOption
 import com.blog.domain.poll.entity.PollType
@@ -174,7 +175,7 @@ class PollService(
     }
 
     @Transactional
-    fun voteAsUser(pollId: Long, userId: Long, req: VoteRequest) {
+    fun voteAsUser(pollId: Long, userId: Long, req: VoteRequest): VoteResult {
         val poll = pollRepository.findById(pollId).orElseThrow { ApiException(ErrorCode.POLL_NOT_FOUND) }
         validateOpen(poll)
 
@@ -189,19 +190,22 @@ class PollService(
         if (existingOptionIds.isNotEmpty()) {
             val incomingSorted = optionIds.sorted()
 
-            if (existingOptionIds == incomingSorted) return
+            if (existingOptionIds == incomingSorted) return VoteResult.UNCHANGED
 
             if (!poll.allowChange) throw ApiException(ErrorCode.POLL_CHANGE_NOT_ALLOWED)
 
             voteRepository.deleteAllByPollIdAndUserId(pollId, userId)
             voteRepository.flush()
+            voteRepository.saveAll(optionIds.map { Vote(pollId = pollId, optionId = it, userId = userId) })
+            return VoteResult.CHANGED
         }
 
         voteRepository.saveAll(optionIds.map { Vote(pollId = pollId, optionId = it, userId = userId) })
+        return VoteResult.CREATED
     }
 
     @Transactional
-    fun voteAsAnonymous(pollId: Long, anonymousKey: String, req: VoteRequest) {
+    fun voteAsAnonymous(pollId: Long, anonymousKey: String, req: VoteRequest): VoteResult {
         val poll = pollRepository.findById(pollId).orElseThrow { ApiException(ErrorCode.POLL_NOT_FOUND) }
         validateOpen(poll)
 
@@ -210,10 +214,23 @@ class PollService(
         val optionIds = normalizeOptionIds(req.optionIds, poll.maxSelections)
         ensureOptionsBelongToPoll(pollId, optionIds)
 
-        val existing = voteRepository.countByPollIdAndAnonymousKey(pollId, anonymousKey)
-        if (existing > 0) throw ApiException(ErrorCode.POLL_ANONYMOUS_CHANGE_NOT_ALLOWED)
+        val incomingSorted = optionIds.sorted()
+
+        val existingSorted = voteRepository
+            .findAllByPollIdAndAnonymousKey(pollId, anonymousKey)
+            .map { it.optionId }
+            .sorted()
+
+        if (existingSorted.isNotEmpty() && existingSorted == incomingSorted) {
+            return VoteResult.UNCHANGED
+        }
+
+        if (existingSorted.isNotEmpty()) {
+            throw ApiException(ErrorCode.POLL_ANONYMOUS_CHANGE_NOT_ALLOWED)
+        }
 
         voteRepository.saveAll(optionIds.map { Vote(pollId = pollId, optionId = it, anonymousKey = anonymousKey) })
+        return VoteResult.CREATED
     }
 
     private fun validateOpen(poll: Poll) {

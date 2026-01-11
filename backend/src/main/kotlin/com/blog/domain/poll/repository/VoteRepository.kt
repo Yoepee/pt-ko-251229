@@ -6,10 +6,9 @@ import org.springframework.data.jpa.repository.Modifying
 
 interface VoteRepository : JpaRepository<Vote, Long> {
 
-    fun countByPollIdAndUserId(pollId: Long, userId: Long): Long
-    fun countByPollIdAndAnonymousKey(pollId: Long, anonymousKey: String): Long
+    fun findAllByPollIdAndUserId(pollId: Long, userId: Long): List<Vote>
+    fun findAllByPollIdAndAnonymousKey(pollId: Long, anonymousKey: String): List<Vote>
 
     @Modifying
     fun deleteAllByPollIdAndUserId(pollId: Long, userId: Long): Long
-    fun findAllByPollIdAndUserId(pollId: Long, userId: Long): List<Vote>
 }
