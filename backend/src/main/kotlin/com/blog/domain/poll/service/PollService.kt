@@ -181,10 +181,20 @@ class PollService(
         val optionIds = normalizeOptionIds(req.optionIds, poll.maxSelections)
         ensureOptionsBelongToPoll(pollId, optionIds)
 
-        val existing = voteRepository.countByPollIdAndUserId(pollId, userId)
-        if (existing > 0) {
+        val existingOptionIds = voteRepository
+            .findAllByPollIdAndUserId(pollId, userId)
+            .map { it.optionId }
+            .sorted()
+
+        if (existingOptionIds.isNotEmpty()) {
+            val incomingSorted = optionIds.sorted()
+
+            if (existingOptionIds == incomingSorted) return
+
             if (!poll.allowChange) throw ApiException(ErrorCode.POLL_CHANGE_NOT_ALLOWED)
+
             voteRepository.deleteAllByPollIdAndUserId(pollId, userId)
+            voteRepository.flush()
         }
 
         voteRepository.saveAll(optionIds.map { Vote(pollId = pollId, optionId = it, userId = userId) })

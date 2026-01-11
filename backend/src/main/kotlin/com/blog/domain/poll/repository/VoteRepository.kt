@@ -11,4 +11,5 @@ interface VoteRepository : JpaRepository<Vote, Long> {
 
     @Modifying
     fun deleteAllByPollIdAndUserId(pollId: Long, userId: Long): Long
+    fun findAllByPollIdAndUserId(pollId: Long, userId: Long): List<Vote>
 }
