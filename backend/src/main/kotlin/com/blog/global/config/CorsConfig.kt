@@ -17,7 +17,7 @@ class CorsConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration().apply {
-            allowedOrigins = allowedOriginsProp
+            allowedOriginPatterns = allowedOriginsProp
                 .split(",")
                 .map(String::trim)
                 .filter(String::isNotBlank)

@@ -24,4 +24,4 @@ custom:
   cookie:
     secure: false
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    allowed-origins: ${CUSTOM__CORS__ALLOWED__ORIGINS:http://localhost:3000}
