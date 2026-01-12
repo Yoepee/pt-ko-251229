@@ -11,7 +11,7 @@ import { usePathname } from 'next/navigation';
 export function Navbar() {
   const pathname = usePathname();
   
-  const { data: categories } = useQuery({
+  useQuery({
     queryKey: queryKeys.categories.all.queryKey,
     queryFn: categoryApi.getAll,
   });
