@@ -1,14 +1,6 @@
 package com.blog.domain.poll.service.mapper
 
-import com.blog.domain.poll.dto.response.OptionCountRow
-import com.blog.domain.poll.dto.response.RankingPreviewItem
-import com.blog.domain.poll.dto.response.RankingPreviewRaw
-import com.blog.domain.poll.dto.response.YesNoCountRaw
-import com.blog.domain.poll.dto.response.YesNoPreview
-import com.blog.domain.poll.dto.response.RankingPreview
-import com.blog.domain.poll.dto.response.RankingResultItem
-import com.blog.domain.poll.dto.response.YesNoResults
-import com.blog.domain.poll.dto.response.RankingResults
+import com.blog.domain.poll.dto.response.*
 
 internal fun YesNoCountRaw.toYesNoPreview(): YesNoPreview {
     if (total <= 0) return YesNoPreview(
@@ -31,33 +23,40 @@ internal fun YesNoCountRaw.toYesNoPreview(): YesNoPreview {
 }
 
 internal fun RankingPreviewRaw.toRankingPreview(topN: Int = 5): RankingPreview {
-    if (total <= 0) return RankingPreview(items = emptyList(), etcPercent = null, etcCount = null)
+    val showEtc = optionCount > topN
 
+    // total이 0이어도 top에는 0들이 들어올 수 있음(이미 left join + groupBy라서)
+    // 퍼센트 계산은 total=0이면 전부 0으로
     val percents = top.map { item ->
-        val p = ((item.count * 100.0) / total).toInt()
+        val p = if (total > 0) ((item.count * 100.0) / total).toInt() else 0
         item to p
     }
 
     val sumTop = percents.sumOf { it.second }
-    var etc = 100 - sumTop
 
     val items = percents.mapIndexed { idx, (item, p) ->
-        val percent = if (idx == percents.lastIndex && etc < 0) p + etc else p
-
         RankingPreviewItem(
             optionId = item.optionId,
             label = item.label,
             count = item.count,
-            percent = percent.coerceIn(0, 100),
+            percent = p.coerceIn(0, 100),
             rank = idx + 1,
         )
     }
 
-    if (etc < 0) etc = 0
-    val etcPercent = etc.takeIf { it > 0 }
-    val etcCount = total - top.sumOf { it.count }
+    val etcCountValue = (total - top.sumOf { it.count }).coerceAtLeast(0)
 
-    return RankingPreview(items = items, etcPercent = etcPercent, etcCount = etcCount)
+    val etc = when {
+        total <= 0 -> 0
+        etcCountValue == 0L -> 0
+        else -> (100 - sumTop).coerceAtLeast(0)
+    }
+
+    val etcPercent = if (showEtc) etc else etc.takeIf { it > 0 }
+    val etcCount = if (showEtc) etcCountValue else etcCountValue.takeIf { it > 0 }
+
+    val hasEtc = showEtc
+    return RankingPreview(items = items, etcPercent = etcPercent, etcCount = etcCount, hasEtc = hasEtc)
 }
 
 internal fun buildYesNoResults(rows: List<OptionCountRow>, total: Long): YesNoResults {
@@ -67,6 +66,17 @@ internal fun buildYesNoResults(rows: List<OptionCountRow>, total: Long): YesNoRe
     val yesCount = yes?.count ?: 0L
     val noCount = no?.count ?: 0L
     val safeTotal = if (total > 0) total else (yesCount + noCount)
+
+    if (safeTotal <= 0L) {
+        return YesNoResults(
+            yesOptionId = yes?.optionId ?: -1L,
+            noOptionId = no?.optionId ?: -1L,
+            yesCount = 0L,
+            noCount = 0L,
+            yesPercent = 0,
+            noPercent = 0,
+        )
+    }
 
     val yesP = if (safeTotal > 0) ((yesCount * 100.0) / safeTotal).toInt() else 0
     val noP = 100 - yesP
