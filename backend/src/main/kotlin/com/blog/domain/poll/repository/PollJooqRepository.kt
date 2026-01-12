@@ -1,5 +1,6 @@
 package com.blog.domain.poll.repository
 
+import com.blog.domain.poll.dto.request.PollListRequest
 import com.blog.domain.poll.dto.response.OptionCountRow
 import com.blog.domain.poll.dto.response.RankingPreviewRaw
 import com.blog.domain.poll.dto.response.YesNoCountRaw
@@ -17,4 +18,11 @@ interface PollJooqRepository {
     fun fetchTotalVotes(pollId: Long): Long
     fun fetchMyVoteOptionIdsMap(pollIds: List<Long>, userId: Long): Map<Long, List<Long>>
     fun fetchMyVoteOptionIds(pollId: Long, userId: Long): List<Long>
+    fun countPublicPolls(req: PollListRequest): Long
+    fun fetchPublicPollIdsByPopular(
+        req: PollListRequest,
+        offset: Int,
+        limit: Int,
+        desc: Boolean
+    ): List<Long>
 }

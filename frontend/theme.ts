@@ -1,40 +1,87 @@
-'use client';
-
 import { createTheme } from '@mantine/core';
 
 export const theme = createTheme({
-  primaryColor: 'gray',
-  defaultRadius: 'lg',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
+  primaryColor: 'violet',
+  colors: {
+    // Custom dark violet scale for background/UI
+    dark: [
+      '#C1C2C5',
+      '#A6A7AB',
+      '#909296',
+      '#5C5F66',
+      '#373A40',
+      '#2C2E33',
+      '#25262B', // 6: Main background
+      '#1A1B1E', // 7: Card background
+      '#141517',
+      '#101113',
+    ],
+    // Vibrant Violet for accents
+    violet: [
+      '#F3F0FF',
+      '#E5DBFF',
+      '#D0BFFF',
+      '#B197FC',
+      '#9775FA',
+      '#845EF7',
+      '#7950F2',
+      '#7048E8',
+      '#6741D9',
+      '#5F3DC4',
+    ],
+  },
+  defaultRadius: 'md',
+  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
   headings: {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
-    sizes: {
-      h1: { fontSize: '2.5rem', lineHeight: '1.2' },
-      h2: { fontSize: '2rem', lineHeight: '1.25' },
-    },
+    fontFamily: 'Outfit, sans-serif',
+    fontWeight: '700',
   },
   components: {
+    Button: {
+      defaultProps: {
+        radius: 'md',
+        fw: 600,
+      },
+      styles: {
+        root: {
+            transition: 'transform 0.1s ease',
+        },
+      }
+    },
     Card: {
       defaultProps: {
-        shadow: 'sm',
+        radius: 'lg',
         withBorder: true,
       },
       styles: (theme) => ({
         root: {
-          backgroundColor: 'rgba(255, 255, 255, 0.8)', // Glass-ish
-          backdropFilter: 'blur(10px)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-          '&:hover': {
-            transform: 'scale(1.01)',
-            boxShadow: theme.shadows.md,
-          },
+          backgroundColor: 'rgba(26, 27, 30, 0.6)', // Glass-like dark
+          backdropFilter: 'blur(12px)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
         },
       }),
     },
-    Button: {
-      defaultProps: {
-        radius: 'xl',
-      },
+    Paper: {
+        defaultProps: {
+            radius: 'lg',
+        },
+        styles: (theme) => ({
+            root: {
+                backgroundColor: 'rgba(26, 27, 30, 0.6)',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+            }
+        })
     },
+    Modal: {
+        styles: (theme) => ({
+            content: {
+                backgroundColor: '#1A1B1E',
+                border: '1px solid rgba(255,255,255,0.1)',
+            },
+            header: {
+                backgroundColor: '#1A1B1E',
+            }
+        })
+    }
   },
 });

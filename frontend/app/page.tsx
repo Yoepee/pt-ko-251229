@@ -1,103 +1,142 @@
 'use client';
 
-import { EditorialCard } from '@/components/EditorialCard';
-import { Box, Container, Text } from '@mantine/core';
-
-const MOCK_POSTS = [
-  {
-    id: '1',
-    title: 'Designing for the Future of Interfaces',
-    category: 'Design',
-    image: '/images/post-design.jpg', // Glass/Abstract
-    date: 'Dec 31',
-  },
-  {
-    id: '2',
-    title: 'The Art of Digital Minimalism',
-    category: 'Lifestyle',
-    image: '/images/post-minimal.jpg', // Desk/Laptop
-    date: 'Dec 30',
-  },
-  {
-    id: '3',
-    title: 'Next.js 15: A New Era',
-    category: 'Tech',
-    image: '/images/post-tech.jpg', // Neon
-    date: 'Dec 29',
-  },
-  {
-    id: '4',
-    title: 'Apple Event: Metal & Glass',
-    category: 'Highlights',
-    image: '/images/post-apple.jpg', // Metal
-    date: 'Dec 28',
-  },
-];
+import { VoteCard } from '@/components/VoteCard';
+import { categoryApi, pollApi, PollType } from '@/lib/api';
+import { pollKeys } from '@/lib/queryKeys';
+import { Button, Container, Group, Loader, ScrollArea, Select, SimpleGrid, Stack, Tabs, Text } from '@mantine/core';
+import { IconCircleCheck, IconCircleDashed, IconFilter, IconLayoutGrid, IconList } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
+import { useState } from 'react';
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<string | null>('ALL');
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<string>('id,desc');
+
+  // Queries
+  const { data: categories } = useQuery({
+    queryKey: ['categories', 'all'],
+    queryFn: categoryApi.getAll,
+  });
+
+  const { data: pollData, isLoading } = useQuery({
+    queryKey: [...pollKeys.all.queryKey, activeTab, selectedCategory, sortBy],
+    queryFn: () => pollApi.getAll({ 
+        type: activeTab === 'ALL' ? undefined : activeTab as PollType,
+        categoryId: selectedCategory || undefined,
+        sort: sortBy === 'endsAt,asc' ? ['endsAt,asc', 'id,desc'] : [sortBy],
+        size: 12 
+    }),
+  });
+
   return (
-    <Box className="bg-[#FAF9F6] min-h-screen text-black overflow-hidden">
-      
-      {/* Hero: Spline 3D Scene - Full Width/Cinematic */}
-      {/* increased height for impact, removed top text */}
-      <div className="w-full h-[85vh] relative mb-20">
-         <iframe 
-            src='https://my.spline.design/yoepeeblog-WSnoSNWDZ6MEqgNmQfBrUOnb/' 
-            frameBorder='0' 
-            width='100%' 
-            height='100%'
-            className="w-full h-full pointer-events-auto"
-            title="Spline 3D Scene"
-         />
-         {/* Overlay gradient to blend bottom */}
-         {/* <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-[#FAF9F6] to-transparent pointer-events-none" /> */}
-      </div>
-
-      {/* Editorial Grid Section */}
-      <Container size="xl" pb={120}>
-        <div className="flex flex-col md:flex-row justify-between items-end mb-12 border-b border-black/10 pb-6">
-            <h2 className="text-4xl font-light tracking-tight">Latest Stories</h2>
-            <Text c="dimmed" size="sm" className="mb-1">Curated for the curious mind</Text>
-        </div>
-
-        {/* Custom asymmetrical grid layout */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-y-16 gap-x-8">
-            
-            {/* Featured Item (Design) - Takes 8 columns */}
-            <div className="md:col-span-8">
-                <EditorialCard 
-                    {...MOCK_POSTS[0]} 
-                    aspectRatio="aspect-[16/9]" 
-                />
+    <div className="pb-20 pt-10">
+      <Container size="xl">
+        <Stack gap="md">
+            {/* Area 1: Independent Poll Type Tabs (Matches Rankings Design) */}
+            <div className="bg-[#1A1B1E]/40 p-3 px-6 rounded-2xl border border-white/5 backdrop-blur-sm w-fit">
+                <Tabs value={activeTab} onChange={setActiveTab} variant="pills" color="violet" classNames={{
+                    tab: "px-6 py-1.5 font-semibold transition-all text-xs md:text-sm",
+                }}>
+                    <Tabs.List>
+                        <Tabs.Tab value="ALL" leftSection={<IconList size={14} />}>
+                            전체
+                        </Tabs.Tab>
+                        <Tabs.Tab value={PollType.VOTE} leftSection={<IconCircleCheck size={14} />}>
+                            찬반
+                        </Tabs.Tab>
+                        <Tabs.Tab value={PollType.RANK} leftSection={<IconCircleDashed size={14} />}>
+                            순위
+                        </Tabs.Tab>
+                    </Tabs.List>
+                </Tabs>
             </div>
 
-            {/* Side Item (Minimalism) - Takes 4 columns, vertical */}
-            <div className="md:col-span-4 flex flex-col justify-end">
-                 <EditorialCard 
-                    {...MOCK_POSTS[1]} 
-                    aspectRatio="aspect-[3/4]" 
-                />
-            </div>
+            {/* Area 2: Categories and Sort (Unified Row) */}
+            <div className="bg-[#1A1B1E]/40 p-6 rounded-3xl border border-white/5 backdrop-blur-sm">
+                <div className="flex flex-col md:flex-row items-end gap-10">
+                    <div className="flex-1 min-w-0 w-full">
+                        <Group justify="space-between" mb="xs">
+                            <Group gap={6} pl={2}>
+                                <IconFilter size={14} className="text-violet-400" />
+                                <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts="0.05em">카테고리</Text>
+                            </Group>
+                            {selectedCategory && (
+                                <Button variant="subtle" size="compact-xs" color="gray" onClick={() => setSelectedCategory(null)} className="text-[10px]">초기화</Button>
+                            )}
+                        </Group>
+                        <ScrollArea scrollbarSize={4}>
+                            <Group gap="xs" wrap="nowrap" pb="sm">
+                                <Button 
+                                    variant={selectedCategory === null ? 'filled' : 'light'} 
+                                    color={selectedCategory === null ? 'violet' : 'gray'}
+                                    radius="xl"
+                                    size="compact-sm"
+                                    onClick={() => setSelectedCategory(null)}
+                                >
+                                    전체
+                                </Button>
+                                {categories?.map((cat) => (
+                                    <Button 
+                                        key={cat.id}
+                                        variant={selectedCategory === cat.id ? 'filled' : 'light'} 
+                                        color={selectedCategory === cat.id ? 'violet' : 'gray'}
+                                        radius="xl"
+                                        size="compact-sm"
+                                        onClick={() => setSelectedCategory(cat.id)}
+                                    >
+                                        {cat.name}
+                                    </Button>
+                                ))}
+                            </Group>
+                        </ScrollArea>
+                    </div>
 
-            {/* Row 2 */}
-            {/* Tech - Takes 6 columns */}
-            <div className="md:col-span-6">
-                <EditorialCard 
-                    {...MOCK_POSTS[2]} 
-                    aspectRatio="aspect-[4/3]" 
-                />
-            </div>
+                    <div className="w-full md:w-[200px] pb-1">
+                        <Text size="xs" fw={700} c="dimmed" mb={5} pl={4} tt="uppercase" lts="0.05em">정렬 기준</Text>
+                        <Select
+                            value={sortBy}
+                            onChange={(val) => setSortBy(val || 'id,desc')}
+                            data={[
+                                { label: '최신순', value: 'id,desc' },
+                                { label: '마감 임박순', value: 'endsAt,asc' },
+                                { label: '누적 투표순', value: 'popular,desc' }
+                            ]}
+                            radius="md"
+                            variant="filled"
+                            comboboxProps={{ transitionProps: { transition: 'pop-top-right', duration: 200 } }}
+                            classNames={{ input: 'bg-[#0A0A0B] border-white/5' }}
+                        />
+                    </div>
+                </div>
 
-            {/* Apple - Takes 6 columns */}
-            <div className="md:col-span-6">
-                 <EditorialCard 
-                    {...MOCK_POSTS[3]} 
-                    aspectRatio="aspect-[4/3]" 
-                />
+                {/* Content Area */}
+                <div className="mt-6">
+                    {isLoading ? (
+                        <div className="flex justify-center py-40"><Loader color="violet" type="bars" size="lg" /></div>
+                    ) : (
+                        <>
+                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+                                {(pollData?.content || []).map((poll) => (
+                                    <Link href={`/vote/${poll.id || poll.pollId}`} key={`poll-${poll.id || poll.pollId}`} className="no-underline">
+                                        <VoteCard poll={poll} />
+                                    </Link>
+                                ))}
+                            </SimpleGrid>
+                            
+                            {pollData?.content?.length === 0 && (
+                                <div className="py-40 text-center bg-[#1A1B1E]/30 rounded-3xl border border-white/5 border-dashed">
+                                     <IconLayoutGrid size={48} className="text-gray-700 mx-auto mb-4 opacity-20" />
+                                     <Text c="dimmed" size="lg">해당 조건에 맞는 투표가 없습니다.</Text>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
-
-        </div>
+        </Stack>
       </Container>
-    </Box>
+    </div>
   );
 }

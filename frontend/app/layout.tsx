@@ -1,16 +1,14 @@
-import { Footer } from "@/components/Footer";
-import { Header } from "@/components/Header";
+import { Header } from "@/components/Header"; // Keeping Header for User Profile part only? Or merge.
+import { Navbar } from "@/components/Navbar";
 import { Providers } from "@/components/Providers";
-import { theme } from "@/theme";
-import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
-import "@mantine/notifications/styles.css";
+import { ColorSchemeScript } from "@mantine/core";
+// Actually, let's keep Header for top search/profile but make it offset.
 import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "My Blog",
-  description: "Apple-style blog built with Next.js and Mantine",
+  title: "VoteBoard",
+  description: "Real-time voting platform",
 };
 
 export default function RootLayout({
@@ -19,20 +17,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" {...mantineHtmlProps} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <ColorSchemeScript />
+        <ColorSchemeScript defaultColorScheme="dark" />
       </head>
-      <body className="antialiased bg-gray-50 text-gray-900">
+      <body className="antialiased bg-[#0A0A0B] text-gray-200">
         <Providers>
-          <MantineProvider theme={theme}>
-            <Notifications />
-            <Header />
-              <main className="min-h-screen">
-                {children}
-              </main>
-            <Footer />
-          </MantineProvider>
+            {/* Sidebar (Fixed Left) */}
+            <Navbar />
+            
+            {/* Main Content Area (Offset Right) */}
+            <div className="pl-[240px] flex flex-col min-h-screen">
+                {/* Top Header (User Profile, etc) - Reusing Header but styling needs tweak to remove logo */}
+                <Header /> 
+                
+                <main className="flex-1 p-6 pt-[80px]"> 
+                    {children}
+                </main>
+            </div>
         </Providers>
       </body>
     </html>

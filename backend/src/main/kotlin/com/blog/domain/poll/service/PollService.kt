@@ -11,7 +11,9 @@ import com.blog.domain.poll.dto.response.PollPreview
 import com.blog.domain.poll.dto.response.PollResultsResponse
 import com.blog.domain.poll.dto.response.PollSummaryResponse
 import com.blog.domain.poll.dto.response.PollStatsPreview
+import com.blog.domain.poll.dto.response.RankingPreviewRaw
 import com.blog.domain.poll.dto.response.VoteResult
+import com.blog.domain.poll.dto.response.YesNoCountRaw
 import com.blog.domain.poll.entity.Poll
 import com.blog.domain.poll.entity.PollOption
 import com.blog.domain.poll.entity.PollType
@@ -30,9 +32,12 @@ import com.blog.global.exception.ApiException
 import com.blog.global.exception.ErrorCode
 import com.blog.global.security.JwtPrincipal
 import com.blog.global.util.toPageResponse
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.LocalDateTime
 
 @Service
@@ -77,7 +82,34 @@ class PollService(
     }
 
     @Transactional(readOnly = true)
-    fun listPublic(principal: JwtPrincipal?, req: PollListRequest, pageable: Pageable): PageResponse<PollSummaryResponse> {
+    fun listPublic(
+        principal: JwtPrincipal?,
+        req: PollListRequest,
+        pageable: Pageable
+    ): PageResponse<PollSummaryResponse> {
+
+        fun isPopularProp(p: String) = when (p.lowercase()) {
+            "popular", "votecount", "totalvotes" -> true
+            else -> false
+        }
+
+        val popularOrder = pageable.sort.firstOrNull { isPopularProp(it.property) }
+        val isPopular = popularOrder != null
+
+        return if (isPopular) {
+            val desc = popularOrder?.direction?.isDescending ?: true
+            listPublicPopular(principal, req, pageable, desc)
+        } else {
+            listPublicJpa(principal, req, pageable)
+        }
+    }
+
+    private fun listPublicJpa(
+        principal: JwtPrincipal?,
+        req: PollListRequest,
+        pageable: Pageable
+    ): PageResponse<PollSummaryResponse> {
+
         val page = pollRepository.findAll(PollSpecs.publicList(req), pageable)
         val polls = page.content
         if (polls.isEmpty()) return page.toPageResponse { it.toSummary() }
@@ -86,7 +118,7 @@ class PollService(
 
         val totalMap = pollJooqRepository.fetchTotalVotes(pollIds)
         val yesNoMap = pollJooqRepository.fetchYesNoCounts(pollIds)
-        val rankMap = pollJooqRepository.fetchRankingTop(pollIds, topN = 5)
+        val rankMap = pollJooqRepository.fetchRankingTop(pollIds, topN = 4)
 
         val myVotesMap: Map<Long, List<Long>> =
             if (principal != null) pollJooqRepository.fetchMyVoteOptionIdsMap(pollIds, principal.userId)
@@ -104,12 +136,70 @@ class PollService(
             val stats = PollStatsPreview(
                 totalVotes = totalVotes,
                 myVoteOptionIds = myVoteOptionIds,
-                endsInSeconds = poll.endsAt?.let { java.time.Duration.between(now, it).seconds.coerceAtLeast(0) }
+                endsInSeconds = poll.endsAt?.let { Duration.between(now, it).seconds.coerceAtLeast(0) }
             )
 
             val preview: PollPreview? = when (poll.pollType) {
-                PollType.VOTE -> yesNoMap[poll.id]?.toYesNoPreview()
-                PollType.RANK -> rankMap[poll.id]?.toRankingPreview(topN = 5)
+                PollType.VOTE -> (yesNoMap[poll.id] ?: YesNoCountRaw(poll.id, 0, 0, 0)).toYesNoPreview()
+                PollType.RANK -> (rankMap[poll.id] ?: RankingPreviewRaw(poll.id, total = 0, optionCount = 0, top = emptyList()))
+                    .toRankingPreview(topN = 4)
+            }
+
+            poll.toSummary(stats = stats, preview = preview)
+        }
+    }
+
+    private fun listPublicPopular(
+        principal: JwtPrincipal?,
+        req: PollListRequest,
+        pageable: Pageable,
+        desc: Boolean,
+    ): PageResponse<PollSummaryResponse> {
+
+        val total = pollJooqRepository.countPublicPolls(req)
+        if (total == 0L) {
+            val emptyPage = PageImpl<Poll>(emptyList(), pageable, 0)
+            return emptyPage.toPageResponse { it.toSummary() }
+        }
+
+        val offset = pageable.offset.toInt()
+        val limit = pageable.pageSize
+        val pollIds = pollJooqRepository.fetchPublicPollIdsByPopular(req, offset, limit, desc)
+
+        if (pollIds.isEmpty()) {
+            val emptyPage = PageImpl<Poll>(emptyList(), pageable, total)
+            return emptyPage.toPageResponse { it.toSummary() }
+        }
+
+        val pollsById = pollRepository.findAllById(pollIds).associateBy { it.id }
+        val polls = pollIds.mapNotNull { pollsById[it] }
+
+        val totalMap = pollJooqRepository.fetchTotalVotes(pollIds)
+        val yesNoMap = pollJooqRepository.fetchYesNoCounts(pollIds)
+        val rankMap = pollJooqRepository.fetchRankingTop(pollIds, topN = 4)
+        val myVotesMap =
+            if (principal != null) pollJooqRepository.fetchMyVoteOptionIdsMap(pollIds, principal.userId)
+            else emptyMap()
+
+        val now = LocalDateTime.now()
+
+        // "Page"를 만들어서 기존 mapper 흐름 그대로 태움
+        val page = PageImpl(polls, pageable, total)
+
+        return page.toPageResponse { poll ->
+            val totalVotes = totalMap[poll.id] ?: 0L
+            val myVoteOptionIds = if (principal != null) (myVotesMap[poll.id] ?: emptyList()) else null
+
+            val stats = PollStatsPreview(
+                totalVotes = totalVotes,
+                myVoteOptionIds = myVoteOptionIds,
+                endsInSeconds = poll.endsAt?.let { Duration.between(now, it).seconds.coerceAtLeast(0) }
+            )
+
+            val preview: PollPreview? = when (poll.pollType) {
+                PollType.VOTE -> (yesNoMap[poll.id] ?: YesNoCountRaw(poll.id, 0, 0, 0)).toYesNoPreview()
+                PollType.RANK -> (rankMap[poll.id] ?: RankingPreviewRaw(poll.id, total = 0, optionCount = 0, top = emptyList()))
+                    .toRankingPreview(topN = 4)
             }
 
             poll.toSummary(stats = stats, preview = preview)
