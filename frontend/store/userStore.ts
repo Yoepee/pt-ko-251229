@@ -1,5 +1,11 @@
-import { User } from '@/lib/api';
 import { create } from 'zustand';
+
+interface User {
+  id: number;
+  username: string;
+  nickname: string;
+  role: string;
+}
 
 interface UserState {
   user: User | null;

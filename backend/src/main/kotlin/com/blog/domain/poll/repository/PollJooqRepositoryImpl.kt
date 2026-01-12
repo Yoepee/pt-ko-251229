@@ -1,12 +1,10 @@
 package com.blog.domain.poll.repository
 
-import com.blog.domain.poll.dto.request.PollListRequest
 import com.blog.domain.poll.dto.response.OptionCountRow
 import com.blog.domain.poll.dto.response.RankingCountItemRaw
 import com.blog.domain.poll.dto.response.RankingPreviewRaw
 import com.blog.domain.poll.dto.response.YesNoCountRaw
 import com.blog.jooq.tables.PollOptions.POLL_OPTIONS
-import com.blog.jooq.tables.Polls.POLLS
 import com.blog.jooq.tables.Votes.VOTES
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.*
@@ -41,41 +39,34 @@ class PollJooqRepositoryImpl(
     override fun fetchYesNoCounts(pollIds: List<Long>): Map<Long, YesNoCountRaw> {
         if (pollIds.isEmpty()) return emptyMap()
 
-        val pid = field(name("pid"), Long::class.java)
-
-        val idsTable = values(*pollIds.map { row(it) }.toTypedArray()).`as`("ids", "pid")
-        val pidField = idsTable.field(pid)!!
-
         // YES/NO를 sort_order로 합산
-        val yesAgg = sum(
+        val yesCount = sum(
             `when`(POLL_OPTIONS.SORT_ORDER.eq(0), inline(1)).otherwise(inline(0))
-        )
-        val noAgg = sum(
+        ).`as`("yes_cnt")
+
+        val noCount = sum(
             `when`(POLL_OPTIONS.SORT_ORDER.eq(1), inline(1)).otherwise(inline(0))
-        )
+        ).`as`("no_cnt")
 
-        val yesCnt = coalesce(yesAgg, inline(0)).`as`("yes_cnt")
-        val noCnt  = coalesce(noAgg, inline(0)).`as`("no_cnt")
-
-        val totalCnt = coalesce(count(VOTES.ID), inline(0)).`as`("total_cnt")
+        val total = count().`as`("total_cnt")
 
         return dsl
             .select(
-                pidField,
-                yesCnt,
-                noCnt,
-                totalCnt,
+                VOTES.POLL_ID,
+                yesCount,
+                noCount,
+                total,
             )
-            .from(idsTable)
-            .leftJoin(VOTES).on(VOTES.POLL_ID.eq(pidField))
-            .leftJoin(POLL_OPTIONS).on(POLL_OPTIONS.ID.eq(VOTES.OPTION_ID))
-            .groupBy(pidField)
+            .from(VOTES)
+            .join(POLL_OPTIONS).on(POLL_OPTIONS.ID.eq(VOTES.OPTION_ID))
+            .where(VOTES.POLL_ID.`in`(pollIds))
+            .groupBy(VOTES.POLL_ID)
             .fetch()
             .associate { r ->
-                val pollId = r.get(pidField)!!
-                val yes = (r.get(yesCnt) as Number).toLong()
-                val no  = (r.get(noCnt) as Number).toLong()
-                val tot = (r.get(totalCnt) as Number).toLong()
+                val pollId = r.get(VOTES.POLL_ID)!!
+                val yes = (r.get("yes_cnt") as Number).toLong()
+                val no = (r.get("no_cnt") as Number).toLong()
+                val tot = (r.get("total_cnt") as Number).toLong()
                 pollId to YesNoCountRaw(pollId, yes, no, tot)
             }
     }
@@ -89,21 +80,20 @@ class PollJooqRepositoryImpl(
     override fun fetchRankingTop(pollIds: List<Long>, topN: Int): Map<Long, RankingPreviewRaw> {
         if (pollIds.isEmpty()) return emptyMap()
 
-        // 1) 옵션 기준 vote count 집계 (0 포함)
+        val cntField = count().`as`("cnt")
+
+        // 1) poll_id + option_id 단위 집계
         val base = dsl
             .select(
-                POLL_OPTIONS.POLL_ID.`as`("poll_id"),
-                POLL_OPTIONS.ID.`as`("option_id"),
+                VOTES.POLL_ID.`as`("poll_id"),
+                VOTES.OPTION_ID.`as`("option_id"),
                 POLL_OPTIONS.TEXT.`as`("label"),
-                count(VOTES.ID).`as`("cnt"),
+                cntField,
             )
-            .from(POLL_OPTIONS)
-            .leftJoin(VOTES).on(
-                VOTES.POLL_ID.eq(POLL_OPTIONS.POLL_ID)
-                    .and(VOTES.OPTION_ID.eq(POLL_OPTIONS.ID))
-            )
-            .where(POLL_OPTIONS.POLL_ID.`in`(pollIds))
-            .groupBy(POLL_OPTIONS.POLL_ID, POLL_OPTIONS.ID, POLL_OPTIONS.TEXT)
+            .from(VOTES)
+            .join(POLL_OPTIONS).on(POLL_OPTIONS.ID.eq(VOTES.OPTION_ID))
+            .where(VOTES.POLL_ID.`in`(pollIds))
+            .groupBy(VOTES.POLL_ID, VOTES.OPTION_ID, POLL_OPTIONS.TEXT)
             .asTable("base")
 
         val bPollId = base.field("poll_id", Long::class.java)!!
@@ -111,30 +101,44 @@ class PollJooqRepositoryImpl(
         val bLabel = base.field("label", String::class.java)!!
         val bCnt = base.field("cnt", Long::class.java)!!
 
-        val total = sum(bCnt).over(partitionBy(bPollId)).`as`("total")
-        val optionCount = count().over(partitionBy(bPollId)).`as`("option_count")
+        // 2) poll별 total
+        val totals = dsl
+            .select(bPollId.`as`("poll_id"), sum(bCnt).`as`("total"))
+            .from(base)
+            .groupBy(bPollId)
+            .asTable("totals")
+
+        val tPollId = totals.field("poll_id", Long::class.java)!!
+        val tTotal = totals.field("total", Long::class.java)!!
+
+        // 3) row_number over(partition by poll_id order by cnt desc, option_id asc)
         val rn = rowNumber()
             .over(partitionBy(bPollId).orderBy(bCnt.desc(), bOptionId.asc()))
             .`as`("rn")
 
-        // ✅ 2) rn/total 포함한 "ranked" 서브쿼리 생성
+        // 4) base join totals + rn 계산 후 topN 필터
         val ranked = dsl
-            .select(bPollId, bOptionId, bLabel, bCnt, total, optionCount, rn)
+            .select(
+                bPollId,
+                bOptionId,
+                bLabel,
+                bCnt,
+                tTotal,
+                rn,
+            )
             .from(base)
+            .join(totals).on(tPollId.eq(bPollId))
             .asTable("ranked")
 
         val rPollId = ranked.field(bPollId)!!
         val rOptionId = ranked.field(bOptionId)!!
         val rLabel = ranked.field(bLabel)!!
         val rCnt = ranked.field(bCnt)!!
-        val rTotal = ranked.field("total", Long::class.java)!!
-        val rOptionCount = ranked.field("option_count", Int::class.java)!!
+        val rTotal = ranked.field(tTotal)!!
         val rRn = ranked.field("rn", Int::class.java)!!
 
-
-        // ✅ 3) 바깥에서 rn 필터
         val rows = dsl
-            .select(rPollId, rOptionId, rLabel, rCnt, rTotal, rOptionCount, rRn)
+            .select(rPollId, rOptionId, rLabel, rCnt, rTotal)
             .from(ranked)
             .where(rRn.le(topN))
             .orderBy(rPollId.asc(), rCnt.desc(), rOptionId.asc())
@@ -143,8 +147,7 @@ class PollJooqRepositoryImpl(
         val grouped = rows.groupBy { it.get(rPollId)!! }
 
         return grouped.mapValues { (pid, rs) ->
-            val tot = (rs.first().get(rTotal) as Number).toLong()
-            val optCnt = rs.first().get(rOptionCount)!!
+            val tot = rs.first().get(rTotal)!!
             val top = rs.map { rec ->
                 RankingCountItemRaw(
                     optionId = rec.get(rOptionId)!!,
@@ -152,7 +155,7 @@ class PollJooqRepositoryImpl(
                     count = rec.get(rCnt)!!,
                 )
             }
-            RankingPreviewRaw(pollId = pid, total = tot, optionCount = optCnt, top = top)
+            RankingPreviewRaw(pollId = pid, total = tot, top = top)
         }
     }
 
@@ -213,46 +216,5 @@ class PollJooqRepositoryImpl(
             .and(VOTES.USER_ID.eq(userId))
             .orderBy(VOTES.OPTION_ID.asc())
             .fetch(VOTES.OPTION_ID)
-    }
-
-    override fun countPublicPolls(req: PollListRequest): Long =
-        dsl.selectCount()
-            .from(POLLS)
-            .where(publicListCondition(req))
-            .fetchOne(0, Long::class.java) ?: 0L
-
-    override fun fetchPublicPollIdsByPopular(
-        req: PollListRequest,
-        offset: Int,
-        limit: Int,
-        desc: Boolean,
-    ): List<Long> {
-        val voteCnt = count(VOTES.ID)
-
-        return dsl.select(POLLS.ID)
-            .from(POLLS)
-            .leftJoin(VOTES).on(VOTES.POLL_ID.eq(POLLS.ID))
-            .where(publicListCondition(req))
-            .groupBy(POLLS.ID)
-            .orderBy(
-                if (desc) voteCnt.desc() else voteCnt.asc(),
-                POLLS.ID.desc(), // tie-breaker(고정 추천)
-            )
-            .offset(offset)
-            .limit(limit)
-            .fetch(POLLS.ID)
-    }
-
-    private fun publicListCondition(req: PollListRequest): org.jooq.Condition {
-        var c = POLLS.VISIBILITY.eq("PUBLIC")
-            .and(POLLS.DELETED_AT.isNull)
-
-        req.categoryId?.let { c = c.and(POLLS.CATEGORY_ID.eq(it)) }
-        req.type?.let { c = c.and(POLLS.POLL_TYPE.eq(it.name)) } // 또는 enum 컬럼 타입에 맞게
-        req.q?.takeIf { it.isNotBlank() }?.let { keyword ->
-            c = c.and(POLLS.TITLE.likeIgnoreCase("%$keyword%")) // Postgres면 ILIKE로 나감
-        }
-
-        return c
     }
 }

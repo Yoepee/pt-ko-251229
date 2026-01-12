@@ -6,7 +6,6 @@ import com.blog.global.security.SecurityConstants
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -36,9 +35,6 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers(*SecurityConstants.PUBLIC_ENDPOINTS).permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/categories").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/polls", "/api/v1/polls/**", "/api/v1/polls/rankings").permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/v1/polls/*/votes").permitAll()
                     .anyRequest().authenticated()
             }
             .formLogin { it.disable() }

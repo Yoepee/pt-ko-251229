@@ -30,60 +30,57 @@ export default function Register() {
   return (
     <Container size="xs" py={120}>
       <div className="text-center mb-8">
-         <Title order={1} className="text-3xl font-black text-white mb-2 tracking-tight">계정 만들기</Title>
-         <Text c="gray.4">지금 가입하고 투표에 참여하세요</Text>
+         <Title order={1} className="text-3xl font-bold mb-2">Create Account</Title>
+         <Text c="dimmed">Join our community today</Text>
       </div>
 
-      <Paper radius="lg" p="xl" bg="#1A1B1E" className="border border-white/5 shadow-2xl">
+      <Paper radius="xl" p="xl" withBorder className="bg-white/80 backdrop-blur-md">
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <TextInput
-            label="사용자 이름"
-            placeholder="사용하실 아이디를 입력하세요"
+            label="Username"
+            placeholder="Choose a username"
             required
+            radius="md"
             mb="md"
             {...form.getInputProps('username')}
-            classNames={{ input: 'bg-white/5 border-white/10' }}
           />
           <TextInput
-            label="닉네임"
-            placeholder="표시될 이름을 입력하세요"
+            label="Nickname"
+            placeholder="Your display name"
             required
+            radius="md"
             mb="md"
             {...form.getInputProps('nickname')}
-            classNames={{ input: 'bg-white/5 border-white/10' }}
           />
           <PasswordInput
-            label="비밀번호"
-            placeholder="비밀번호를 입력하세요"
+            label="Password"
+            placeholder="Create a password"
             required
+            radius="md"
             mb="md"
             {...form.getInputProps('password')}
-            classNames={{ input: 'bg-white/5 border-white/10' }}
           />
           <Checkbox 
-            label="이용 약관에 동의합니다"
+            label="I agree to the terms and conditions"
             mb="xl"
-            color="violet"
             {...form.getInputProps('terms', { type: 'checkbox' })}
           />
           <Button 
             fullWidth 
             size="lg" 
-            radius="md"
+            radius="xl"
             type="submit"
-            color="violet"
             loading={isSignupPending}
-            className="shadow-lg shadow-violet-900/20"
           >
-            가입하기
+            Create Account
           </Button>
         </form>
       </Paper>
 
-      <Text ta="center" mt="xl" size="sm" c="dimmed">
-        이미 계정이 있으신가요?{' '}
-        <Anchor href="/login" size="sm" c="violet.4" fw={600}>
-          로그인
+      <Text align="center" mt="md" size="sm" c="dimmed">
+        Already have an account?{' '}
+        <Anchor href="/login" size="sm">
+          Sign in
         </Anchor>
       </Text>
     </Container>

@@ -29,6 +29,7 @@ class CategoryController(
 
     @GetMapping
     fun list(
+        @AuthenticationPrincipal principal: JwtPrincipal,
     ): ResponseEntity<ApiResponse<List<CategoryResponse>>> {
         val list = categoryService.list()
         return ResponseEntity.ok(ApiResponse.ok(data = list))

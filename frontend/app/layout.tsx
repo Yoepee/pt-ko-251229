@@ -1,14 +1,16 @@
-import { Header } from "@/components/Header"; // Keeping Header for User Profile part only? Or merge.
-import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
+import { Header } from "@/components/Header";
 import { Providers } from "@/components/Providers";
-import { ColorSchemeScript } from "@mantine/core";
-// Actually, let's keep Header for top search/profile but make it offset.
+import { theme } from "@/theme";
+import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
+import "@mantine/notifications/styles.css";
 import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VoteBoard",
-  description: "Real-time voting platform",
+  title: "My Blog",
+  description: "Apple-style blog built with Next.js and Mantine",
 };
 
 export default function RootLayout({
@@ -17,24 +19,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" {...mantineHtmlProps} suppressHydrationWarning>
       <head>
-        <ColorSchemeScript defaultColorScheme="dark" />
+        <ColorSchemeScript />
       </head>
-      <body className="antialiased bg-[#0A0A0B] text-gray-200">
+      <body className="antialiased bg-gray-50 text-gray-900">
         <Providers>
-            {/* Sidebar (Fixed Left) */}
-            <Navbar />
-            
-            {/* Main Content Area (Offset Right) */}
-            <div className="pl-[240px] flex flex-col min-h-screen">
-                {/* Top Header (User Profile, etc) - Reusing Header but styling needs tweak to remove logo */}
-                <Header /> 
-                
-                <main className="flex-1 p-6 pt-[80px]"> 
-                    {children}
-                </main>
-            </div>
+          <MantineProvider theme={theme}>
+            <Notifications />
+            <Header />
+              <main className="min-h-screen">
+                {children}
+              </main>
+            <Footer />
+          </MantineProvider>
         </Providers>
       </body>
     </html>

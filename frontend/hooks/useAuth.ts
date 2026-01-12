@@ -1,6 +1,6 @@
 'use client';
 
-import { ApiResponse, authApi } from '@/lib/api';
+import { authApi } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { useUserStore } from '@/store/userStore';
 import { notifications } from '@mantine/notifications';
@@ -39,7 +39,7 @@ export function useAuth() {
       });
       router.push('/');
     },
-    onError: (error: AxiosError<ApiResponse<null>>) => {
+    onError: (error: AxiosError<{ message: string }>) => {
       notifications.show({
         title: 'Login Failed',
         message: error.response?.data?.message || 'Invalid username or password.',
@@ -58,7 +58,7 @@ export function useAuth() {
       });
       router.push('/login');
     },
-    onError: (error: AxiosError<ApiResponse<null>>) => {
+    onError: (error: AxiosError<{ message: string }>) => {
       notifications.show({
         title: 'Registration Failed',
         message: error.response?.data?.message || 'Something went wrong during registration.',
