@@ -2,6 +2,7 @@ import { Header } from "@/components/Header"; // Keeping Header for User Profile
 import { Navbar } from "@/components/Navbar";
 import { Providers } from "@/components/Providers";
 import { ColorSchemeScript } from "@mantine/core";
+import "@mantine/core/styles.css";
 // Actually, let's keep Header for top search/profile but make it offset.
 import type { Metadata } from "next";
 import "./globals.css";
