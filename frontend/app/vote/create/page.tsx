@@ -191,7 +191,7 @@ export default function CreateVotePage() {
                                     <Text size="sm" fw={700} c="cyan.3">반대</Text>
                                 </Paper>
                             </Group>
-                            <Text size="xs" c="dimmed" mt="sm">찬반 투표는 '찬성' 또는 '반대' 중에서 선택하는 방식으로 진행됩니다.</Text>
+                            <Text size="xs" c="dimmed" mt="sm">찬반 투표는 &apos;찬성&apos; 또는 &apos;반대&apos; 중에서 선택하는 방식으로 진행됩니다.</Text>
                          </div>
                     )}
 

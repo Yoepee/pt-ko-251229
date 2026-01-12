@@ -23,8 +23,7 @@ export default function Register() {
   });
 
   const handleSubmit = (values: typeof form.values) => {
-    const { terms, ...data } = values;
-    signup(data);
+    signup(values);
   };
 
   return (

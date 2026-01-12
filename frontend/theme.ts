@@ -53,27 +53,27 @@ export const theme = createTheme({
         radius: 'lg',
         withBorder: true,
       },
-      styles: (theme) => ({
+      styles: {
         root: {
           backgroundColor: 'rgba(26, 27, 30, 0.6)', // Glass-like dark
           backdropFilter: 'blur(12px)',
           borderColor: 'rgba(255, 255, 255, 0.1)',
         },
-      }),
+      },
     },
     Paper: {
         defaultProps: {
             radius: 'lg',
         },
-        styles: (theme) => ({
+        styles: {
             root: {
                 backgroundColor: 'rgba(26, 27, 30, 0.6)',
                 borderColor: 'rgba(255, 255, 255, 0.1)',
             }
-        })
+        }
     },
     Modal: {
-        styles: (theme) => ({
+        styles: {
             content: {
                 backgroundColor: '#1A1B1E',
                 border: '1px solid rgba(255,255,255,0.1)',
@@ -81,7 +81,7 @@ export const theme = createTheme({
             header: {
                 backgroundColor: '#1A1B1E',
             }
-        })
+        }
     }
   },
 });
