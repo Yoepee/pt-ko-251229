@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS battle_match_participants (
                                                          match_id          BIGINT NOT NULL REFERENCES battle_matches(id) ON DELETE CASCADE,
 
     user_id           BIGINT NOT NULL,        -- 외부 유저 식별자 (FK 없음)
-    team              VARCHAR(1) NOT NULL,    -- A | B
+    team              CHAR(1) NOT NULL,    -- A | B
     is_bot            BOOLEAN NOT NULL DEFAULT FALSE,
     bot_profile       VARCHAR(50) NULL,
 
