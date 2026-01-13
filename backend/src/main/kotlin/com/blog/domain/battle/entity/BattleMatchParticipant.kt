@@ -61,6 +61,9 @@ class BattleMatchParticipant(
 
     @Column(name = "left_at")
     var leftAt: LocalDateTime? = null,
+
+    @Column(name = "ready_at")
+    var readyAt: LocalDateTime? = null,
 ) : BaseTimeEntity() {
 
     @Id
