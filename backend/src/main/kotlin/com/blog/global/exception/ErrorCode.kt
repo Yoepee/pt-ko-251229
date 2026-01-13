@@ -42,4 +42,19 @@ enum class ErrorCode(
     RATE_LIMIT_EXCEEDED(429, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     RATE_LIMIT_VOTE_EXCEEDED(429, "투표 요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     RATE_LIMIT_POLL_CREATE_EXCEEDED(429, "투표 생성 요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
+
+    // Battle
+    BATTLE_MATCH_NOT_FOUND(404, "배틀 매치를 찾을 수 없습니다."),
+    BATTLE_MATCH_NOT_LEAVABLE(400, "현재 상태에서는 방을 나갈 수 없습니다."),
+    BATTLE_MATCH_NOT_JOINABLE(409, "현재 참가할 수 없는 매치입니다."),
+    BATTLE_MATCH_FULL(409, "이미 매치 정원이 찼습니다."),
+    BATTLE_NOT_PARTICIPANT(403, "매치 참가자가 아닙니다."),
+    BATTLE_MATCH_NOT_RUNNING(409, "진행 중인 매치가 아닙니다."),
+    BATTLE_FINISH_NOT_ALLOWED(403, "매치를 종료할 권한이 없습니다."),
+    BATTLE_INVALID_INPUT(400, "입력 값이 올바르지 않습니다."),
+    BATTLE_CHARACTER_CHANGE_NOT_ALLOWED(400, "대기중인 방에서만 캐릭터를 변경할 수 있습니다."),
+    BATTLE_READY_NOT_ALLOWED(400, "대기중인 방에서만 준비 상태를 변경할 수 있습니다."),
+    BATTLE_START_NOT_ALLOWED(403, "방장만 시작할 수 있습니다."),
+    BATTLE_START_CONDITION_NOT_MET(400, "시작 조건이 충족되지 않았습니다."),
+    BATTLE_RATE_LIMIT_EXCEEDED(429, "배틀 입력이 너무 많습니다. 잠시 후 다시 시도해주세요."),
 }
