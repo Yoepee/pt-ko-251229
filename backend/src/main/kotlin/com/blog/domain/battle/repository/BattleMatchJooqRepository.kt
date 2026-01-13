@@ -201,6 +201,17 @@ class BattleMatchJooqRepository(
         return WaitingRoomsPage(rows, total)
     }
 
+    fun startIfWaiting(matchId: Long): Int {
+        val now = java.time.LocalDateTime.now()
+        return dsl.update(BATTLE_MATCHES)
+            .set(BATTLE_MATCHES.STATUS, BattleMatchStatus.RUNNING.name)
+            .set(BATTLE_MATCHES.STARTED_AT, now)
+            .set(BATTLE_MATCHES.UPDATED_AT, now)
+            .where(BATTLE_MATCHES.ID.eq(matchId))
+            .and(BATTLE_MATCHES.STATUS.eq(BattleMatchStatus.WAITING.name))
+            .execute()
+    }
+
     // -------- enum safe parsers --------
     private fun toMatchStatus(s: String): BattleMatchStatus =
         runCatching { BattleMatchStatus.valueOf(s) }

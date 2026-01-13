@@ -54,5 +54,7 @@ enum class ErrorCode(
     BATTLE_INVALID_INPUT(400, "입력 값이 올바르지 않습니다."),
     BATTLE_CHARACTER_CHANGE_NOT_ALLOWED(400, "대기중인 방에서만 캐릭터를 변경할 수 있습니다."),
     BATTLE_READY_NOT_ALLOWED(400, "대기중인 방에서만 준비 상태를 변경할 수 있습니다."),
+    BATTLE_START_NOT_ALLOWED(403, "방장만 시작할 수 있습니다."),
+    BATTLE_START_CONDITION_NOT_MET(400, "시작 조건이 충족되지 않았습니다."),
     BATTLE_RATE_LIMIT_EXCEEDED(429, "배틀 입력이 너무 많습니다. 잠시 후 다시 시도해주세요."),
 }

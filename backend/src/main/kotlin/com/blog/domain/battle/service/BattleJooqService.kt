@@ -532,6 +532,34 @@ class BattleJooqService(
         }
     }
 
+    @Transactional
+    fun startRoom(userId: Long, matchId: Long) {
+        val info = matchRepo.getMatchInfo(matchId)
+            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
+
+        if (info.status != BattleMatchStatus.WAITING) {
+            throw ApiException(ErrorCode.BATTLE_START_CONDITION_NOT_MET)
+        }
+
+        val owner = matchRepo.findOwnerUserId(matchId)
+        if (owner == null || owner != userId) {
+            throw ApiException(ErrorCode.BATTLE_START_NOT_ALLOWED)
+        }
+
+        val active = partRepo.countActiveParticipants(matchId)
+        val ready = partRepo.countReadyActiveParticipants(matchId)
+
+        if (active != MAX_PLAYERS.toLong() || ready != MAX_PLAYERS.toLong()) {
+            throw ApiException(ErrorCode.BATTLE_START_CONDITION_NOT_MET)
+        }
+
+        // ✅ 원자적 시작 (WAITING일 때만 RUNNING)
+        val updated = matchRepo.startIfWaiting(matchId)
+        if (updated == 0) return // 멱등: 누가 먼저 시작했으면 조용히 종료(또는 예외)
+
+        scheduleMatchFinish(matchId)
+    }
+
     private fun expected(rA: Int, rB: Int): Double =
         1.0 / (1.0 + 10.0.pow((rB - rA) / 400.0))
 }

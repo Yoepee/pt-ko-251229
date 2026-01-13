@@ -103,4 +103,13 @@ class BattleRoomController(
         )
         return ResponseEntity.ok(ApiResponse.ok(message = if (req.ready) "준비 완료" else "준비 해제"))
     }
+
+    @PostMapping("/rooms/{matchId}/start")
+    fun startRoom(
+        @AuthenticationPrincipal principal: JwtPrincipal,
+        @PathVariable matchId: Long,
+    ): ResponseEntity<ApiResponse<Unit>> {
+        battleService.startRoom(principal.userId, matchId)
+        return ResponseEntity.ok(ApiResponse.ok(message = "게임 시작"))
+    }
 }
