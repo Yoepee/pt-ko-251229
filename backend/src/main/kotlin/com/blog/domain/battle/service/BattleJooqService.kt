@@ -416,6 +416,14 @@ class BattleJooqService(
             matchId = matchId
         )
 
+        val active = partRepo.countActiveParticipants(matchId)
+        val ready = partRepo.countReadyActiveParticipants(matchId)
+
+        val canStart = (info.status == BattleMatchStatus.WAITING) &&
+                (owner != null && owner == userId) &&
+                (active == MAX_PLAYERS.toLong()) &&
+                (ready == MAX_PLAYERS.toLong())
+
         return BattleRoomDetailResponse(
             matchId = matchId,
             matchType = info.matchType,
@@ -436,7 +444,8 @@ class BattleJooqService(
                     isOwner = (owner != null && owner == it.userId),
                     isReady = it.readyAt != null
                 )
-            }
+            },
+            canStart = canStart,
         )
     }
 

@@ -12,4 +12,5 @@ data class BattleRoomDetailResponse(
     val ownerUserId: Long?,
     val maxPlayers: Int,
     val participants: List<BattleRoomParticipantResponse>,
+    val canStart: Boolean,
 )
