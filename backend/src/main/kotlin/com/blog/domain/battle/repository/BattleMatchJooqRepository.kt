@@ -110,22 +110,31 @@ class BattleMatchJooqRepository(
         val m = BATTLE_MATCHES.`as`("m")
         val p = BATTLE_MATCH_PARTICIPANTS.`as`("p")
 
-        val activeCount = org.jooq.impl.DSL.count(p.ID)
-
-        return dsl
+        val candidates = dsl
             .select(m.ID)
             .from(m)
-            .leftJoin(p).on(p.MATCH_ID.eq(m.ID).and(p.LEFT_AT.isNull)) // ✅ active only
+            .leftJoin(p).on(p.MATCH_ID.eq(m.ID).and(p.LEFT_AT.isNull))
             .where(m.STATUS.eq(BattleMatchStatus.WAITING.name))
             .and(m.MATCH_TYPE.eq(matchType.name))
             .and(m.MODE.eq(mode.name))
             .groupBy(m.ID)
-            .having(activeCount.lt(maxPlayers)) // ✅ < maxPlayers
+            .having(DSL.count(p.ID).lt(maxPlayers))
             .orderBy(m.CREATED_AT.asc())
-            .limit(1)
-            .forUpdate()
-            .skipLocked()
-            .fetchOne(m.ID)
+            .limit(10)
+            .fetch(m.ID)
+
+        for (id in candidates) {
+            val locked = dsl
+                .select(m.ID)
+                .from(m)
+                .where(m.ID.eq(id))
+                .forUpdate()
+                .skipLocked()
+                .fetchOne(m.ID)
+
+            if (locked != null) return locked
+        }
+        return null
     }
 
     fun findOwnerUserId(matchId: Long): Long? =

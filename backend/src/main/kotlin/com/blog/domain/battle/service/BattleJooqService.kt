@@ -150,21 +150,25 @@ class BattleJooqService(
     @Transactional
     fun autoMatch(userId: Long, req: AutoMatchRequest): AutoMatchResponse {
         val seasonId = seasonRepo.findActiveSeasonId()
-            ?: throw ApiException(ErrorCode.NOT_FOUND) // 또는 BATTLE_SEASON_NOT_FOUND
+            ?: throw ApiException(ErrorCode.BATTLE_SEASON_NOT_FOUND)
 
         val joinableMatchId = matchRepo.lockJoinableMatchId(req.matchType, req.mode, MAX_PLAYERS)
 
+        val shouldAutoStart = (req.matchType == BattleMatchType.RANKED)
+
         return if (joinableMatchId != null) {
             val team = joinAs(joinableMatchId, userId, preferTeam = BattleTeam.B, characterId = req.characterId)
+
             val count = partRepo.countActiveParticipants(joinableMatchId)
 
-            if (count >= MAX_PLAYERS.toLong()) {
+            if (shouldAutoStart && count >= MAX_PLAYERS.toLong()) {
                 matchRepo.updateMatchToRunning(joinableMatchId)
                 scheduleMatchFinish(joinableMatchId)
                 emitRoomEvent(joinableMatchId, RoomEvent(RoomEventType.MATCH_STARTED, joinableMatchId, null))
                 emitRoomSnapshot(joinableMatchId)
                 AutoMatchResponse(joinableMatchId, BattleMatchStatus.RUNNING, team)
             } else {
+                emitRoomSnapshot(joinableMatchId)
                 AutoMatchResponse(joinableMatchId, BattleMatchStatus.WAITING, team)
             }
         } else {
@@ -179,6 +183,9 @@ class BattleJooqService(
             )
 
             val team = joinAs(matchId, userId, preferTeam = BattleTeam.A, characterId = req.characterId)
+
+            emitRoomSnapshot(matchId)
+
             AutoMatchResponse(matchId, BattleMatchStatus.WAITING, team)
         }
     }
