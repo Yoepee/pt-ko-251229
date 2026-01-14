@@ -76,7 +76,7 @@ class BattleParticipantJooqRepository(
             }
     }
 
-    fun getTwoActivePlayers(matchId: Long): TwoPlayers {
+    fun getTwoActivePlayersOrNull(matchId: Long): TwoPlayers? {
         val rows = dsl.select(BATTLE_MATCH_PARTICIPANTS.TEAM, BATTLE_MATCH_PARTICIPANTS.USER_ID)
             .from(BATTLE_MATCH_PARTICIPANTS)
             .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
@@ -85,13 +85,11 @@ class BattleParticipantJooqRepository(
 
         val a = rows.firstOrNull { toBattleTeam(it.get(BATTLE_MATCH_PARTICIPANTS.TEAM)) == BattleTeam.A }
             ?.get(BATTLE_MATCH_PARTICIPANTS.USER_ID)
-            ?: throw IllegalStateException("active team A player not found")
 
         val b = rows.firstOrNull { toBattleTeam(it.get(BATTLE_MATCH_PARTICIPANTS.TEAM)) == BattleTeam.B }
             ?.get(BATTLE_MATCH_PARTICIPANTS.USER_ID)
-            ?: throw IllegalStateException("active team B player not found")
 
-        return TwoPlayers(a, b)
+        return if (a != null && b != null) TwoPlayers(a, b) else null
     }
 
     fun insertParticipant(matchId: Long, userId: Long, team: BattleTeam, characterId: Long, characterVersionNo: Int) {
@@ -260,6 +258,15 @@ class BattleParticipantJooqRepository(
                 .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.eq(userId))
                 .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
                 .and(BATTLE_MATCH_PARTICIPANTS.READY_AT.isNotNull)
+        )
+
+    fun existsActiveTeam(matchId: Long, team: BattleTeam): Boolean =
+        dsl.fetchExists(
+            dsl.selectOne()
+                .from(BATTLE_MATCH_PARTICIPANTS)
+                .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+                .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
+                .and(BATTLE_MATCH_PARTICIPANTS.TEAM.eq(team.name))
         )
 
     // -------- enum safe parsers --------
