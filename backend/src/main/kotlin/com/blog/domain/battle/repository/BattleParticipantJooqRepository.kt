@@ -107,6 +107,22 @@ class BattleParticipantJooqRepository(
             .execute()
     }
 
+    fun rejoin(matchId: Long, userId: Long, team: BattleTeam, characterId: Long, characterVersionNo: Int): Int {
+        val now = LocalDateTime.now()
+        return dsl.update(BATTLE_MATCH_PARTICIPANTS)
+            .set(BATTLE_MATCH_PARTICIPANTS.TEAM, team.name)
+            .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_ID, characterId)
+            .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_VERSION_NO, characterVersionNo)
+            .set(BATTLE_MATCH_PARTICIPANTS.JOINED_AT, now)
+            .set(BATTLE_MATCH_PARTICIPANTS.LEFT_AT, null as LocalDateTime?)
+            .set(BATTLE_MATCH_PARTICIPANTS.READY_AT, null as LocalDateTime?)
+            .set(BATTLE_MATCH_PARTICIPANTS.UPDATED_AT, now)
+            .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+            .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.eq(userId))
+            .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNotNull)
+            .execute()
+    }
+
     fun markLeft(matchId: Long, userId: Long): Int {
         val now = LocalDateTime.now()
         return dsl.update(BATTLE_MATCH_PARTICIPANTS)

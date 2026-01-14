@@ -520,7 +520,10 @@ class BattleJooqService(
             else -> throw ApiException(ErrorCode.BATTLE_MATCH_FULL)
         }
 
-        partRepo.insertParticipant(matchId, userId, team, cid, cver)
+        val revived = partRepo.rejoin(matchId, userId, team, cid, cver)
+        if (revived == 0) {
+            partRepo.insertParticipant(matchId, userId, team, cid, cver)
+        }
 
         emitRoomSnapshot(matchId)
 
