@@ -5,6 +5,7 @@ import com.blog.domain.battle.dto.response.TwoPlayers
 import com.blog.domain.battle.entity.BattleTeam
 import com.blog.jooq.Tables.*
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -168,8 +169,56 @@ class BattleParticipantJooqRepository(
             .and(BATTLE_MATCH_PARTICIPANTS.READY_AT.isNotNull)
             .fetchOne(0, Long::class.java)!!
 
+    fun updateTeam(matchId: Long, userId: Long, team: BattleTeam): Int {
+        val now = java.time.LocalDateTime.now()
+        return dsl.update(BATTLE_MATCH_PARTICIPANTS)
+            .set(BATTLE_MATCH_PARTICIPANTS.TEAM, team.name)
+            .set(BATTLE_MATCH_PARTICIPANTS.UPDATED_AT, now)
+            .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+            .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.eq(userId))
+            .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
+            .execute()
+    }
+
+    fun findOtherActiveUserId(matchId: Long, userId: Long): Long? =
+        dsl.select(BATTLE_MATCH_PARTICIPANTS.USER_ID)
+            .from(BATTLE_MATCH_PARTICIPANTS)
+            .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+            .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
+            .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.ne(userId))
+            .fetchOne(BATTLE_MATCH_PARTICIPANTS.USER_ID, Long::class.java)
+
+    fun swapTeams(matchId: Long, userA: Long, userB: Long): Int {
+        val p = BATTLE_MATCH_PARTICIPANTS
+        val now = LocalDateTime.now()
+
+        return dsl.update(p)
+            .set(
+                p.TEAM,
+                DSL.`when`(p.USER_ID.eq(userA), BattleTeam.B.name)
+                    .`when`(p.USER_ID.eq(userB), BattleTeam.A.name)
+                    .otherwise(p.TEAM)
+            )
+            .set(p.UPDATED_AT, now)
+            .where(p.MATCH_ID.eq(matchId))
+            .and(p.LEFT_AT.isNull)
+            .and(p.READY_AT.isNull)
+            .and(p.USER_ID.`in`(userA, userB))
+            .execute()
+    }
+
+    fun isReady(matchId: Long, userId: Long): Boolean =
+        dsl.fetchExists(
+            dsl.selectOne()
+                .from(BATTLE_MATCH_PARTICIPANTS)
+                .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+                .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.eq(userId))
+                .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
+                .and(BATTLE_MATCH_PARTICIPANTS.READY_AT.isNotNull)
+        )
+
     // -------- enum safe parsers --------
     private fun toBattleTeam(s: String): BattleTeam =
-        runCatching { BattleTeam.valueOf(s) }
+        runCatching { BattleTeam.valueOf(s.trim()) }
             .getOrElse { throw IllegalStateException("Invalid match team in DB: $s") }
 }

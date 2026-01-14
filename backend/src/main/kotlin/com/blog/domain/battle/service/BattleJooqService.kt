@@ -1,5 +1,10 @@
 package com.blog.domain.battle.service
 
+import com.blog.domain.battle.dto.realtime.LobbyEvent
+import com.blog.domain.battle.dto.realtime.LobbyEventType
+import com.blog.domain.battle.dto.realtime.ReadyChangedPayload
+import com.blog.domain.battle.dto.realtime.RoomEvent
+import com.blog.domain.battle.dto.realtime.RoomEventType
 import com.blog.domain.battle.dto.request.AutoMatchRequest
 import com.blog.domain.battle.dto.request.BattleInputRequest
 import com.blog.domain.battle.dto.request.CreateRoomRequest
@@ -9,6 +14,7 @@ import com.blog.domain.battle.dto.response.BattleRoomDetailResponse
 import com.blog.domain.battle.dto.response.BattleRoomParticipantResponse
 import com.blog.domain.battle.dto.response.BattleRoomSummaryResponse
 import com.blog.domain.battle.dto.response.BattleCharacterResponse
+import com.blog.domain.battle.dto.response.BattleRoomSnapshotResponse
 import com.blog.domain.battle.entity.BattleMatchStatus
 import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.domain.battle.entity.BattleMode
@@ -17,6 +23,8 @@ import com.blog.domain.battle.repository.*
 import com.blog.global.common.PageResponse
 import com.blog.global.exception.ApiException
 import com.blog.global.exception.ErrorCode
+import com.blog.global.realtime.RealtimeKeys
+import com.blog.global.realtime.SseHub
 import jakarta.transaction.Transactional
 import org.jooq.DSLContext
 import org.springframework.stereotype.Service
@@ -32,7 +40,8 @@ class BattleJooqService(
     private val resultRepo: BattleResultJooqRepository,
     private val ratingRepo: BattleRatingJooqRepository,
     private val historyRepo: BattleRatingHistoryJooqRepository,
-    private val battleRedis: BattleRedisPort
+    private val battleRedis: BattleRedisPort,
+    private val sseHub: SseHub
 ) {
 
     private val DURATION_MS = 30_000L
@@ -90,19 +99,41 @@ class BattleJooqService(
         val remain = partRepo.countActiveParticipants(matchId)
         if (remain == 0L) {
             matchRepo.cancelIfWaiting(matchId)
+
+            emitRoomEvent(
+                matchId,
+                RoomEvent(
+                    type = RoomEventType.MATCH_CANCELED,
+                    matchId = matchId,
+                    payload = null
+                )
+            )
+            emitRoomSnapshot(matchId)
             return
         }
 
         val owner = matchRepo.findOwnerUserId(matchId)
         if (owner == userId) {
             val newOwner = partRepo.findNextOwnerUserId(matchId)
-                ?: run {
-                    // 이론상 remain>0이면 null이 아니지만 방어
-                    matchRepo.cancelIfWaiting(matchId)
-                    return
-                }
+            if (newOwner == null) {
+                matchRepo.cancelIfWaiting(matchId)
+                emitRoomEvent(matchId, RoomEvent(RoomEventType.MATCH_CANCELED, matchId, null))
+                emitRoomSnapshot(matchId)
+                return
+            }
             matchRepo.updateOwner(matchId, newOwner)
+
+            emitRoomEvent(
+                matchId,
+                RoomEvent(
+                    type = RoomEventType.OWNER_CHANGED,
+                    matchId = matchId,
+                    payload = mapOf("ownerUserId" to newOwner)
+                )
+            )
         }
+
+        emitRoomSnapshot(matchId)
     }
 
     // -------------------------
@@ -123,6 +154,8 @@ class BattleJooqService(
             if (count >= MAX_PLAYERS.toLong()) {
                 matchRepo.updateMatchToRunning(joinableMatchId)
                 scheduleMatchFinish(joinableMatchId)
+                emitRoomEvent(joinableMatchId, RoomEvent(RoomEventType.MATCH_STARTED, joinableMatchId, null))
+                emitRoomSnapshot(joinableMatchId)
                 AutoMatchResponse(joinableMatchId, BattleMatchStatus.RUNNING, team)
             } else {
                 AutoMatchResponse(joinableMatchId, BattleMatchStatus.WAITING, team)
@@ -476,6 +509,8 @@ class BattleJooqService(
 
         partRepo.insertParticipant(matchId, userId, team, cid, cver)
 
+        emitRoomSnapshot(matchId)
+
         return matchId
     }
 
@@ -511,6 +546,8 @@ class BattleJooqService(
 
         val updated = partRepo.updateCharacter(matchId, userId, characterId, versionNo)
         if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
+
+        emitRoomSnapshot(matchId)
     }
 
     @Transactional
@@ -531,14 +568,15 @@ class BattleJooqService(
         val updated = partRepo.setReady(matchId, userId, readyAt)
         if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
-        // ✅ 둘 다 들어와 있고, 둘 다 ready면 시작
-        val active = partRepo.countActiveParticipants(matchId)
-        val readyCount = partRepo.countReadyActiveParticipants(matchId)
-
-        if (active == MAX_PLAYERS.toLong() && readyCount == MAX_PLAYERS.toLong()) {
-            matchRepo.updateMatchToRunning(matchId)
-            scheduleMatchFinish(matchId)
-        }
+        emitRoomEvent(
+            matchId,
+            RoomEvent(
+                type = RoomEventType.READY_CHANGED,
+                matchId = matchId,
+                payload = ReadyChangedPayload(userId, ready)
+            )
+        )
+        emitRoomSnapshot(matchId)
     }
 
     @Transactional
@@ -567,8 +605,207 @@ class BattleJooqService(
         if (updated == 0) return // 멱등: 누가 먼저 시작했으면 조용히 종료(또는 예외)
 
         scheduleMatchFinish(matchId)
+
+        emitRoomEvent(
+            matchId,
+            RoomEvent(
+                type = RoomEventType.MATCH_STARTED,
+                matchId = matchId,
+                payload = null
+            )
+        )
+        emitRoomSnapshot(matchId)
+    }
+
+    @Transactional
+    fun kickFromRoom(ownerUserId: Long, matchId: Long, targetUserId: Long) {
+        val status = matchRepo.findMatchStatus(matchId)
+            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
+        if (status != BattleMatchStatus.WAITING) throw ApiException(ErrorCode.BATTLE_KICK_NOT_ALLOWED)
+
+        val owner = matchRepo.findOwnerUserId(matchId)
+        if (owner == null || owner != ownerUserId) throw ApiException(ErrorCode.BATTLE_KICK_NOT_ALLOWED)
+
+        // 방장은 자기 자신 강퇴 금지
+        if (targetUserId == ownerUserId) throw ApiException(ErrorCode.BATTLE_KICK_NOT_ALLOWED)
+
+        // 대상이 active 참가자가 아니면 멱등 처리(또는 예외)
+        if (!partRepo.existsActiveParticipant(matchId, targetUserId)) return
+
+        // left_at 처리 + ready 초기화(readyAt이 leftAt에 의미없지만 깔끔하게)
+        val affected = partRepo.markLeft(matchId, targetUserId)
+        if (affected == 0) return
+
+        val remain = partRepo.countActiveParticipants(matchId)
+        if (remain == 0L) {
+            matchRepo.cancelIfWaiting(matchId)
+            emitRoomEvent(matchId, RoomEvent(RoomEventType.MATCH_CANCELED, matchId, null))
+            emitRoomSnapshot(matchId)
+            return
+        }
+
+        emitRoomEvent(
+            matchId,
+            RoomEvent(
+                type = RoomEventType.USER_KICKED,
+                matchId = matchId,
+                payload = mapOf("userId" to targetUserId)
+            )
+        )
+        emitRoomSnapshot(matchId)
+    }
+
+    @Transactional
+    fun changeTeam(userId: Long, matchId: Long, toTeam: BattleTeam) {
+        val status = matchRepo.findMatchStatus(matchId)
+            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
+        if (status != BattleMatchStatus.WAITING) throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
+
+        // active 참가자만
+        val myTeam = partRepo.findActiveTeam(matchId, userId)
+            ?: throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
+
+        if (myTeam == toTeam) return // 멱등
+
+        if (partRepo.isReady(matchId, userId)) {
+            throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
+        }
+
+        val active = partRepo.countActiveParticipants(matchId)
+
+        // -------------------------
+        // 2인(MVP) 정책
+        // -------------------------
+        if (MAX_PLAYERS == 2) {
+            // 혼자만 있는 방이면 그냥 변경 가능 (단, READY는 이미 false여야 함)
+            if (active == 1L) {
+                val updated = partRepo.updateTeam(matchId, userId, toTeam)
+                if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
+
+                emitRoomEvent(
+                    matchId,
+                    RoomEvent(
+                        type = RoomEventType.TEAM_CHANGED,
+                        matchId = matchId,
+                        payload = mapOf("userId" to userId, "team" to toTeam.name)
+                    )
+                )
+                emitRoomSnapshot(matchId)
+                return
+            }
+
+            // 2명이면 스왑만 허용 (자리 중복 방지)
+            val otherUserId = partRepo.findOtherActiveUserId(matchId, userId)
+                ?: throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
+
+            // 상대도 ready면 불가 (강제 해제 X)
+            if (partRepo.isReady(matchId, otherUserId)) {
+                throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
+            }
+
+            val otherTeam = partRepo.findActiveTeam(matchId, otherUserId)
+                ?: throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
+
+            // 내가 원하는 팀이 "상대 팀"일 때만 swap 허용
+            if (toTeam != otherTeam) {
+                throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
+            }
+
+            val swapped = partRepo.swapTeams(matchId, userId, otherUserId)
+            if (swapped != 2) {
+                throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
+            }
+
+            emitRoomEvent(
+                matchId,
+                RoomEvent(
+                    type = RoomEventType.TEAM_SWAPPED,
+                    matchId = matchId,
+                    payload = mapOf("a" to userId, "b" to otherUserId)
+                )
+            )
+            emitRoomSnapshot(matchId)
+            return
+        }
+
+        val updated = partRepo.updateTeam(matchId, userId, toTeam)
+        if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
+
+        emitRoomEvent(
+            matchId,
+            RoomEvent(
+                type = RoomEventType.TEAM_CHANGED,
+                matchId = matchId,
+                payload = mapOf("userId" to userId, "team" to toTeam.name)
+            )
+        )
+        emitRoomSnapshot(matchId)
+    }
+
+    fun assertRoomReadable(userId: Long, matchId: Long) {
+        val isParticipant = partRepo.existsActiveParticipant(matchId, userId)
+        if (!isParticipant) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
     }
 
     private fun expected(rA: Int, rB: Int): Double =
         1.0 / (1.0 + 10.0.pow((rB - rA) / 400.0))
+
+    private fun emitRoomEvent(matchId: Long, event: RoomEvent) {
+        sseHub.publish(RealtimeKeys.room(matchId), event)
+    }
+
+    private fun emitRoomSnapshot(matchId: Long) {
+        val snapshot = getRoomDetailForBroadcast(matchId)
+        emitRoomEvent(
+            matchId,
+            RoomEvent(
+                type = RoomEventType.ROOM_SNAPSHOT,
+                matchId = matchId,
+                payload = snapshot
+            )
+        )
+    }
+
+    @Transactional
+    fun getRoomDetailForBroadcast(matchId: Long): BattleRoomSnapshotResponse {
+        val info = matchRepo.getMatchInfo(matchId)
+            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
+
+        val owner = matchRepo.findOwnerUserId(matchId)
+
+        val parts = partRepo.listActiveParticipantsForRoom(
+            seasonId = info.seasonId,
+            matchId = matchId
+        )
+
+        return BattleRoomSnapshotResponse(
+            matchId = matchId,
+            matchType = info.matchType,
+            mode = info.mode,
+            status = info.status,
+            ownerUserId = owner,
+            maxPlayers = MAX_PLAYERS,
+            participants = parts.map {
+                BattleRoomParticipantResponse(
+                    userId = it.userId,
+                    team = it.team,
+                    characterId = it.characterId,
+                    characterName = it.characterName,
+                    rating = it.rating,
+                    wins = it.wins,
+                    losses = it.losses,
+                    draws = it.draws,
+                    isOwner = (owner != null && owner == it.userId),
+                    isReady = it.readyAt != null
+                )
+            }
+        )
+    }
+
+    private fun emitLobbyRoomsChanged() {
+        sseHub.publish(
+            RealtimeKeys.lobby(),
+            LobbyEvent(type = LobbyEventType.ROOMS_CHANGED, payload = null)
+        )
+    }
 }
