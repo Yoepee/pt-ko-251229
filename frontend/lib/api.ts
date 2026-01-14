@@ -231,3 +231,183 @@ export const pollApi = {
     return response.data.data;
   }
 };
+// --- Battle API ---
+
+export enum LobbyStateType {
+  IDLE = 'IDLE',
+  WAITING = 'WAITING',
+  RUNNING = 'RUNNING',
+}
+
+export enum BattleMatchType {
+  RANKED = 'RANKED',
+  CUSTOM = 'CUSTOM',
+}
+
+export enum BattleMode {
+  SOLO_2LANE_PUSH = 'SOLO_2LANE_PUSH',
+  SOLO_1LANE_RUSH = 'SOLO_1LANE_RUSH',
+  TEAM_2LANE_PUSH = 'TEAM_2LANE_PUSH',
+  TEAM_1LANE_RUSH = 'TEAM_1LANE_RUSH',
+}
+
+export enum BattleMatchStatus {
+  WAITING = 'WAITING',
+  RUNNING = 'RUNNING',
+  FINISHED = 'FINISHED',
+  CANCELED = 'CANCELED',
+}
+
+export interface BattleCharacter {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  versionNo: number;
+}
+
+export interface BattleStats {
+  seasonId: number;
+  userId: number;
+  rating: number;
+  matches: number;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+export interface BattleLobbyState {
+  state: LobbyStateType;
+  matchId: number | null;
+  matchType: BattleMatchType | null;
+  mode: BattleMode | null;
+  team: string | null;
+  isOwner: boolean | null;
+}
+
+export interface BattleRoom {
+  matchId: number;
+  matchType: BattleMatchType;
+  mode: BattleMode;
+  status: BattleMatchStatus;
+  ownerUserId: number;
+  currentPlayers: number;
+  maxPlayers: number;
+  createdAtEpochMs: number;
+}
+
+export interface RoomParticipant {
+  userId: number;
+  team: string;
+  characterId: number;
+  characterName: string;
+  rating: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  isOwner: boolean;
+  isReady: boolean;
+}
+
+export interface RoomDetail {
+  matchId: number;
+  matchType: BattleMatchType;
+  mode: BattleMode;
+  status: BattleMatchStatus;
+  ownerUserId: number;
+  maxPlayers: number;
+  participants: RoomParticipant[];
+  canStart: boolean;
+}
+
+export interface CreateRoomRequest {
+  mode: BattleMode;
+  characterId: number;
+}
+
+export interface AutoMatchRequest {
+  matchType: BattleMatchType;
+  mode: BattleMode;
+  characterId: number | null;
+}
+
+export interface LobbySnapshotPayload {
+  content: BattleRoom[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+}
+
+export interface BattleLobbyEvent {
+  type: 'LOBBY_SNAPSHOT' | 'PING';
+  payload?: LobbySnapshotPayload;
+  ts: number;
+}
+
+export interface BattleRoomEvent {
+  type: 'ROOM_SNAPSHOT' | 'READY_CHANGED' | 'PING';
+  matchId: number;
+  payload?: any; // Use any to accommodate different payload structures (RoomDetail or {userId, ready})
+  ts: number;
+}
+
+export const battleApi = {
+  getCharacters: async () => {
+    const response = await apiClient.get<ApiResponse<BattleCharacter[]>>('/api/v1/battles/characters');
+    return response.data.data;
+  },
+  getMyStats: async () => {
+    const response = await apiClient.get<ApiResponse<BattleStats>>('/api/v1/battles/me/stats');
+    return response.data.data;
+  },
+  getMyState: async () => {
+    const response = await apiClient.get<ApiResponse<BattleLobbyState>>('/api/v1/battles/me/state');
+    return response.data.data;
+  },
+  getRooms: async (params?: { page?: number; size?: number }) => {
+    const response = await apiClient.get<ApiResponse<PageResponse<BattleRoom>>>('/api/v1/battles/rooms', { params });
+    return response.data.data;
+  },
+  createRoom: async (data: CreateRoomRequest) => {
+    const response = await apiClient.post<ApiResponse<{ matchId: number }>>('/api/v1/battles/rooms', data);
+    return response.data.data;
+  },
+  joinRoom: async (id: number, characterId: number) => {
+    const response = await apiClient.post<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/join`, { characterId });
+    return response.data;
+  },
+  getRoomDetail: async (id: number) => {
+    const response = await apiClient.get<ApiResponse<RoomDetail>>(`/api/v1/battles/rooms/${id}`);
+    return response.data.data;
+  },
+  toggleReady: async (id: number, ready: boolean) => {
+    const response = await apiClient.patch<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/ready`, { ready });
+    return response.data;
+  },
+  changeTeam: async (id: number, team: 'A' | 'B') => {
+    const response = await apiClient.patch<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/team`, { team });
+    return response.data;
+  },
+  startGame: async (id: number) => {
+    const response = await apiClient.post<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/start`);
+    return response.data;
+  },
+  leaveRoom: async (id: number) => {
+    const response = await apiClient.post<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/leave`);
+    return response.data;
+  },
+  changeCharacter: async (id: number, characterId: number) => {
+    const response = await apiClient.patch<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/character`, { characterId });
+    return response.data;
+  },
+  kickPlayer: async (id: number, targetUserId: number) => {
+    const response = await apiClient.post<ApiResponse<null>>(`/api/v1/battles/rooms/${id}/kick`, { targetUserId });
+    return response.data;
+  },
+  autoMatch: async (data: AutoMatchRequest) => {
+    const response = await apiClient.post<ApiResponse<{ matchId: number }>>('/api/v1/battles/auto-match', data);
+    return response.data.data;
+  },
+};
