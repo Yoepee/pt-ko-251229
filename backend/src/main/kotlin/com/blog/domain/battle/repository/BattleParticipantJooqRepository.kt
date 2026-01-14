@@ -1,8 +1,12 @@
 package com.blog.domain.battle.repository
 
+import com.blog.domain.battle.dto.response.MyActiveMatchRow
 import com.blog.domain.battle.dto.response.RoomParticipantRow
 import com.blog.domain.battle.dto.response.TwoPlayers
+import com.blog.domain.battle.entity.BattleMode
 import com.blog.domain.battle.entity.BattleTeam
+import com.blog.domain.battle.entity.BattleMatchStatus
+import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.jooq.Tables.*
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -46,6 +50,31 @@ class BattleParticipantJooqRepository(
             .and(BATTLE_MATCH_PARTICIPANTS.TEAM.eq(team.name))
             .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
             .fetch(BATTLE_MATCH_PARTICIPANTS.USER_ID, Long::class.java)
+
+    fun findMyActiveMatch(userId: Long): MyActiveMatchRow? {
+        val p = BATTLE_MATCH_PARTICIPANTS.`as`("p")
+        val m = BATTLE_MATCHES.`as`("m")
+
+        return dsl.select(
+            m.ID, m.STATUS, m.MATCH_TYPE, m.MODE, m.CREATED_BY_USER_ID,
+            p.TEAM
+        )
+            .from(p)
+            .join(m).on(p.MATCH_ID.eq(m.ID))
+            .where(p.USER_ID.eq(userId).and(p.LEFT_AT.isNull))
+            .orderBy(m.CREATED_AT.desc())
+            .limit(1)
+            .fetchOne { r ->
+                MyActiveMatchRow(
+                    matchId = r.get(m.ID)!!,
+                    status = toMatchStatus(r.get(m.STATUS)),
+                    matchType = toMatchType(r.get(m.MATCH_TYPE)),
+                    mode = toMode(r.get(m.MODE)),
+                    team = BattleTeam.valueOf(r.get(p.TEAM)!!.toString()),
+                    ownerUserId = r.get(m.CREATED_BY_USER_ID)
+                )
+            }
+    }
 
     fun getTwoActivePlayers(matchId: Long): TwoPlayers {
         val rows = dsl.select(BATTLE_MATCH_PARTICIPANTS.TEAM, BATTLE_MATCH_PARTICIPANTS.USER_ID)
@@ -221,4 +250,16 @@ class BattleParticipantJooqRepository(
     private fun toBattleTeam(s: String): BattleTeam =
         runCatching { BattleTeam.valueOf(s.trim()) }
             .getOrElse { throw IllegalStateException("Invalid match team in DB: $s") }
+
+    private fun toMatchStatus(s: String): BattleMatchStatus =
+        runCatching { BattleMatchStatus.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match status in DB: $s") }
+
+    private fun toMatchType(s: String): BattleMatchType =
+        runCatching { BattleMatchType.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match type in DB: $s") }
+
+    private fun toMode(s: String): BattleMode =
+        runCatching { BattleMode.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match mode in DB: $s") }
 }

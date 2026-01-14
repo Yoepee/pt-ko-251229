@@ -14,6 +14,9 @@ import com.blog.global.common.ApiResponse
 import com.blog.global.common.PageResponse
 import com.blog.global.security.JwtPrincipal
 import jakarta.validation.Valid
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
+import org.springframework.data.web.PageableDefault
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
@@ -37,10 +40,15 @@ class BattleRoomController(
 
     @GetMapping("/rooms")
     fun listRooms(
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
+        @PageableDefault(
+            page = 0,
+            size = 20,
+            sort = ["createdAt"],
+            direction = Sort.Direction.DESC
+        )
+        pageable: Pageable
     ): ResponseEntity<ApiResponse<PageResponse<BattleRoomSummaryResponse>>> {
-        val res = battleService.listWaitingRooms(page, size)
+        val res = battleService.listWaitingRooms(pageable)
         return ResponseEntity.ok(ApiResponse.ok(data = res))
     }
 

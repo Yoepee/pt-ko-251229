@@ -8,6 +8,7 @@ import com.blog.domain.battle.dto.realtime.RoomEventType
 import com.blog.domain.battle.dto.request.AutoMatchRequest
 import com.blog.domain.battle.dto.request.BattleInputRequest
 import com.blog.domain.battle.dto.request.CreateRoomRequest
+import com.blog.domain.battle.dto.request.RoomOrder
 import com.blog.domain.battle.dto.response.AutoMatchResponse
 import com.blog.domain.battle.dto.response.BattleMatchDetailResponse
 import com.blog.domain.battle.dto.response.BattleRoomDetailResponse
@@ -15,6 +16,9 @@ import com.blog.domain.battle.dto.response.BattleRoomParticipantResponse
 import com.blog.domain.battle.dto.response.BattleRoomSummaryResponse
 import com.blog.domain.battle.dto.response.BattleCharacterResponse
 import com.blog.domain.battle.dto.response.BattleRoomSnapshotResponse
+import com.blog.domain.battle.dto.response.LobbyStateType
+import com.blog.domain.battle.dto.response.MyBattleStatsResponse
+import com.blog.domain.battle.dto.response.MyLobbyStateResponse
 import com.blog.domain.battle.entity.BattleMatchStatus
 import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.domain.battle.entity.BattleMode
@@ -27,6 +31,7 @@ import com.blog.global.realtime.RealtimeKeys
 import com.blog.global.realtime.SseHub
 import jakarta.transaction.Transactional
 import org.jooq.DSLContext
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import java.time.ZoneId
 import kotlin.math.pow
@@ -404,26 +409,34 @@ class BattleJooqService(
         )
     }
 
-    fun listWaitingRooms(page: Int, size: Int): PageResponse<BattleRoomSummaryResponse> {
-        val safePage = page.coerceAtLeast(0)
-        val safeSize = size.coerceIn(1, 100)
+    fun listWaitingRooms(pageable: Pageable): PageResponse<BattleRoomSummaryResponse> {
+        val safePage = pageable.pageNumber.coerceAtLeast(0)
+        val safeSize = pageable.pageSize.coerceIn(1, 100)
 
-        val (rows, total) = matchRepo.listWaitingRoomsPage(safePage, safeSize)
+        // 정렬 허용 범위를 통제 (화이트리스트)
+        val sort = pageable.sort
+        val order = when {
+            sort.getOrderFor("createdAt")?.isDescending == true -> RoomOrder.CREATED_AT_DESC
+            sort.getOrderFor("createdAt")?.isAscending == true  -> RoomOrder.CREATED_AT_ASC
+            else -> RoomOrder.CREATED_AT_DESC
+        }
+
+        val (rows, total) = matchRepo.listWaitingRoomsPage(safePage, safeSize, order)
 
         val totalPages = if (total == 0L) 0 else ((total + safeSize - 1) / safeSize).toInt()
         val hasNext = safePage + 1 < totalPages
 
         return PageResponse(
-            content = rows.map {
+            content = rows.map { r ->
                 BattleRoomSummaryResponse(
-                    matchId = it.matchId,
-                    matchType = it.matchType,
-                    mode = it.mode,
-                    status = it.status,
-                    ownerUserId = it.ownerUserId,
-                    currentPlayers = it.activeCount,
+                    matchId = r.matchId,
+                    matchType = r.matchType,
+                    mode = r.mode,
+                    status = r.status,
+                    ownerUserId = r.ownerUserId,
+                    currentPlayers = r.activeCount,
                     maxPlayers = MAX_PLAYERS,
-                    createdAtEpochMs = it.createdAt
+                    createdAtEpochMs = r.createdAt
                         .atZone(ZoneId.systemDefault())
                         .toInstant()
                         .toEpochMilli()
@@ -799,6 +812,49 @@ class BattleJooqService(
                     isReady = it.readyAt != null
                 )
             }
+        )
+    }
+
+    fun getMyStats(userId: Long): MyBattleStatsResponse {
+        val seasonId = seasonRepo.findActiveSeasonId()
+            ?: throw ApiException(ErrorCode.BATTLE_SEASON_NOT_FOUND)
+
+        // 없으면 insertIfAbsent로 기본 1500 세팅 (이미 너 로직에도 있음)
+        ratingRepo.insertIfAbsent(seasonId, userId)
+
+        val r = ratingRepo.getRatingRow(seasonId, userId)
+            ?: throw ApiException(ErrorCode.BATTLE_RATING_NOT_FOUND)
+
+        return MyBattleStatsResponse(
+            seasonId = seasonId,
+            userId = userId,
+            rating = r.rating,
+            matches = r.matches,
+            wins = r.wins,
+            losses = r.losses,
+            draws = r.draws
+        )
+    }
+
+    fun getMyLobbyState(userId: Long): MyLobbyStateResponse {
+        val row = partRepo.findMyActiveMatch(userId) ?: return MyLobbyStateResponse(
+            state = LobbyStateType.IDLE
+        )
+
+        val status = row.status
+        val state = when (status) {
+            BattleMatchStatus.WAITING -> LobbyStateType.WAITING
+            BattleMatchStatus.RUNNING -> LobbyStateType.RUNNING
+            else -> LobbyStateType.IDLE // FINISHED/CANCELED인데 left_at이 안 찍힌 경우(데이터 정리 필요)
+        }
+
+        return MyLobbyStateResponse(
+            state = state,
+            matchId = row.matchId,
+            matchType = row.matchType,
+            mode = row.mode,
+            team = row.team,
+            isOwner = (row.ownerUserId != null && row.ownerUserId == userId)
         )
     }
 

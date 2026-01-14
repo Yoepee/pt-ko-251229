@@ -1,5 +1,6 @@
 package com.blog.domain.battle.repository
 
+import com.blog.domain.battle.dto.request.RoomOrder
 import com.blog.domain.battle.dto.response.MatchInfo
 import com.blog.domain.battle.dto.response.WaitingRoomRow
 import com.blog.domain.battle.dto.response.WaitingRoomsPage
@@ -9,6 +10,7 @@ import com.blog.domain.battle.entity.BattleMode
 import com.blog.jooq.Tables.BATTLE_MATCHES
 import com.blog.jooq.Tables.BATTLE_MATCH_PARTICIPANTS
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -151,16 +153,23 @@ class BattleMatchJooqRepository(
             .execute()
     }
 
-    fun listWaitingRoomsPage(page: Int, size: Int): WaitingRoomsPage {
+    fun listWaitingRoomsPage(page: Int, size: Int, order: RoomOrder): WaitingRoomsPage {
         val safePage = page.coerceAtLeast(0)
         val safeSize = size.coerceIn(1, 100)
         val offset = safePage * safeSize
 
         val m = BATTLE_MATCHES.`as`("m")
         val p = BATTLE_MATCH_PARTICIPANTS.`as`("p")
-        val activeCount = org.jooq.impl.DSL.count(p.ID).`as`("activeCount")
 
-        // ✅ 1) content 쿼리
+        val activeCountExpr = DSL.count(p.ID)
+        val activeCount = activeCountExpr.`as`("activeCount")
+
+        val orderBy = when (order) {
+            RoomOrder.CREATED_AT_DESC   -> m.CREATED_AT.desc()
+            RoomOrder.CREATED_AT_ASC    -> m.CREATED_AT.asc()
+            RoomOrder.ACTIVE_COUNT_DESC -> activeCount.desc()
+        }
+
         val rows = dsl.select(
             m.ID, m.MATCH_TYPE, m.MODE, m.STATUS, m.CREATED_BY_USER_ID, activeCount, m.CREATED_AT
         )
@@ -168,8 +177,8 @@ class BattleMatchJooqRepository(
             .leftJoin(p).on(p.MATCH_ID.eq(m.ID).and(p.LEFT_AT.isNull))
             .where(m.STATUS.eq(BattleMatchStatus.WAITING.name))
             .groupBy(m.ID, m.MATCH_TYPE, m.MODE, m.STATUS, m.CREATED_BY_USER_ID, m.CREATED_AT)
-            .having(activeCount.gt(0)) // 고아방 제외(원하면 제거)
-            .orderBy(m.CREATED_AT.desc())
+            .having(activeCountExpr.gt(0))
+            .orderBy(orderBy)
             .limit(safeSize)
             .offset(offset)
             .fetch { r ->
@@ -184,8 +193,6 @@ class BattleMatchJooqRepository(
                 )
             }
 
-        // ✅ 2) total 쿼리 (WAITING 방 개수)
-        // groupBy/having 때문에 "그룹 수"를 세야 함.
         val total = dsl.selectCount()
             .from(
                 dsl.select(m.ID)
@@ -193,7 +200,7 @@ class BattleMatchJooqRepository(
                     .leftJoin(p).on(p.MATCH_ID.eq(m.ID).and(p.LEFT_AT.isNull))
                     .where(m.STATUS.eq(BattleMatchStatus.WAITING.name))
                     .groupBy(m.ID)
-                    .having(org.jooq.impl.DSL.count(p.ID).gt(0))
+                    .having(DSL.count(p.ID).gt(0))
                     .asTable("t")
             )
             .fetchOne(0, Long::class.java) ?: 0L
