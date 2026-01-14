@@ -46,6 +46,97 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+interface SlotProps {
+    participant?: RoomParticipant;
+    team: 'A' | 'B';
+    currentUserId?: number;
+    matchType: string;
+    isOwner: boolean;
+    onKick: (userId: number, nickname: string) => void;
+    isKickPending: boolean;
+    kickVariables?: number;
+    onTeamChange: (team: 'A' | 'B') => void;
+    canChangeTeam: boolean;
+    getCharIcon: (charId: number) => React.ReactNode;
+}
+
+const Slot = ({ 
+    participant, 
+    team, 
+    currentUserId, 
+    matchType, 
+    isOwner, 
+    onKick, 
+    isKickPending, 
+    kickVariables,
+    onTeamChange,
+    canChangeTeam,
+    getCharIcon
+}: SlotProps) => (
+    <Card p="lg" radius="lg" bg={participant ? "#1A1B1E" : "rgba(255,255,255,0.02)"} 
+          className={`border-2 transition-all ${participant ? (participant.isReady ? 'border-green-500/50 bg-green-500/5' : 'border-white/5') : 'border-dashed border-white/5'}`}
+    >
+        {participant ? (
+            <Stack align="center" gap="md">
+                <Box className="relative">
+                    <ThemeIcon size={100} radius={50} variant="outline" color={participant.isReady ? "green.4" : "violet.4"} className="bg-white/5 border border-white/10">
+                        {getCharIcon(participant.characterId)}
+                    </ThemeIcon>
+                    {participant.isOwner && (
+                        <Box className="absolute -top-1 -right-1">
+                            <ThemeIcon size={32} radius="xl" color="orange" className="shadow-lg">
+                                <IconCrown size={18} />
+                            </ThemeIcon>
+                        </Box>
+                    )}
+                    {participant.isReady && (
+                        <Box className="absolute -bottom-1 -right-1">
+                            <ThemeIcon size={32} radius="xl" color="green">
+                                <IconCheck size={18} />
+                            </ThemeIcon>
+                        </Box>
+                    )}
+                    {isOwner && participant.userId !== currentUserId && matchType === 'CUSTOM' && (
+                        <Box className="absolute -bottom-1 -left-1">
+                            <Tooltip label="추방하기">
+                                <ActionIcon 
+                                    variant="filled" 
+                                    color="red" 
+                                    radius="xl" 
+                                    size="lg"
+                                    onClick={() => onKick(participant.userId, participant.characterName)}
+                                    loading={isKickPending && kickVariables === participant.userId}
+                                >
+                                    <IconUserMinus size={18} />
+                                </ActionIcon>
+                            </Tooltip>
+                        </Box>
+                    )}
+                </Box>
+                <div className="text-center">
+                    <Text fw={700} size="lg">{participant.characterName}</Text>
+                    <Group gap={6} justify="center" mt={4}>
+                        <Badge color="violet" size="xs" variant="light">R: {participant.rating}</Badge>
+                        <Badge color="gray" size="xs" variant="light">{participant.wins}W {participant.losses}L</Badge>
+                    </Group>
+                </div>
+            </Stack>
+        ) : (
+            <Center h={160}>
+                <Stack align="center" gap="xs">
+                    <IconUser size={40} className="text-white/10" />
+                    <Text size="xs" c="dimmed">대기중...</Text>
+                    {canChangeTeam && (
+                        <Button size="compact-xs" variant="light" color="violet" onClick={() => onTeamChange(team)}>
+                            팀 변경
+                        </Button>
+                    )}
+                </Stack>
+            </Center>
+        )}
+    </Card>
+);
+
 export default function BattleRoomPage() {
     const { id } = useParams<{ id: string }>();
     const roomId = Number(id);
@@ -78,9 +169,10 @@ export default function BattleRoomPage() {
             const timer = setInterval(() => {
                 setSeconds(prev => prev + 1);
             }, 1000);
-            return () => clearInterval(timer);
-        } else {
-            setSeconds(0);
+            return () => {
+                clearInterval(timer);
+                setSeconds(0);
+            };
         }
     }, [room?.matchType, room?.status]);
 
@@ -128,10 +220,10 @@ export default function BattleRoomPage() {
         eventSource.onmessage = handleSseMessage;
         
         // 서버에서 이벤트 이름을 명시적으로 보낼 경우에 대비
-        eventSource.addEventListener('ROOM_SNAPSHOT', handleSseMessage as any);
-        eventSource.addEventListener('READY_CHANGED', handleSseMessage as any);
-        eventSource.addEventListener('PARTICIPANT_JOINED', handleSseMessage as any);
-        eventSource.addEventListener('PARTICIPANT_LEFT', handleSseMessage as any);
+        eventSource.addEventListener('ROOM_SNAPSHOT', handleSseMessage as EventListener);
+        eventSource.addEventListener('READY_CHANGED', handleSseMessage as EventListener);
+        eventSource.addEventListener('PARTICIPANT_JOINED', handleSseMessage as EventListener);
+        eventSource.addEventListener('PARTICIPANT_LEFT', handleSseMessage as EventListener);
 
         eventSource.onopen = () => {
             console.log(`Room SSE Connected: ${roomId}`);
@@ -251,7 +343,7 @@ export default function BattleRoomPage() {
     }
 
     const me = room.participants.find(p => p.userId === user.id);
-    const isOwner = me?.isOwner;
+    const isOwner = !!me?.isOwner;
     const teamA = room.participants.filter(p => p.team === 'A');
     const teamB = room.participants.filter(p => p.team === 'B');
 
@@ -265,72 +357,6 @@ export default function BattleRoomPage() {
         }
     };
 
-    const Slot = ({ participant, team }: { participant?: RoomParticipant, team: 'A' | 'B' }) => (
-        <Card p="lg" radius="lg" bg={participant ? "#1A1B1E" : "rgba(255,255,255,0.02)"} 
-              className={`border-2 transition-all ${participant ? (participant.isReady ? 'border-green-500/50 bg-green-500/5' : 'border-white/5') : 'border-dashed border-white/5'}`}
-        >
-            {participant ? (
-                <Stack align="center" gap="md">
-                    <Box className="relative">
-                        <ThemeIcon size={100} radius={50} variant="outline" color={participant.isReady ? "green.4" : "violet.4"} className="bg-white/5 border border-white/10">
-                            {getCharIcon(participant.characterId)}
-                        </ThemeIcon>
-                        {participant.isOwner && (
-                            <Box className="absolute -top-1 -right-1">
-                                <ThemeIcon size={32} radius="xl" color="orange" className="shadow-lg">
-                                    <IconCrown size={18} />
-                                </ThemeIcon>
-                            </Box>
-                        )}
-                        {participant.isReady && (
-                            <Box className="absolute -bottom-1 -right-1">
-                                <ThemeIcon size={32} radius="xl" color="green">
-                                    <IconCheck size={18} />
-                                </ThemeIcon>
-                            </Box>
-                        )}
-                        {isOwner && participant.userId !== user.id && room.matchType === 'CUSTOM' && (
-                            <Box className="absolute -bottom-1 -left-1">
-                                <Tooltip label="추방하기">
-                                    <ActionIcon 
-                                        variant="filled" 
-                                        color="red" 
-                                        radius="xl" 
-                                        size="lg"
-                                        onClick={() => {
-                                            setKickTarget({ userId: participant.userId, nickname: participant.characterName });
-                                        }}
-                                        loading={kickMutation.isPending && kickMutation.variables === participant.userId}
-                                    >
-                                        <IconUserMinus size={18} />
-                                    </ActionIcon>
-                                </Tooltip>
-                            </Box>
-                        )}
-                    </Box>
-                    <div className="text-center">
-                        <Text fw={700} size="lg">{participant.characterName}</Text>
-                        <Group gap={6} justify="center" mt={4}>
-                            <Badge color="violet" size="xs" variant="light">R: {participant.rating}</Badge>
-                            <Badge color="gray" size="xs" variant="light">{participant.wins}W {participant.losses}L</Badge>
-                        </Group>
-                    </div>
-                </Stack>
-            ) : (
-                <Center h={160}>
-                    <Stack align="center" gap="xs">
-                        <IconUser size={40} className="text-white/10" />
-                        <Text size="xs" c="dimmed">대기중...</Text>
-                        {me && me.team !== team && !me.isReady && room.matchType === 'CUSTOM' && (
-                            <Button size="compact-xs" variant="light" color="violet" onClick={() => teamMutation.mutate(team)}>
-                                팀 변경
-                            </Button>
-                        )}
-                    </Stack>
-                </Center>
-            )}
-        </Card>
-    );
 
     return (
         <Container size="xl" py="xl">
@@ -370,7 +396,19 @@ export default function BattleRoomPage() {
                             TEAM ALPHA
                         </Title>
                         <SimpleGrid cols={1} spacing="lg">
-                            <Slot participant={teamA[0]} team="A" />
+                            <Slot 
+                                participant={teamA[0]} 
+                                team="A" 
+                                currentUserId={user?.id}
+                                matchType={room.matchType}
+                                isOwner={isOwner}
+                                onKick={(uId, nick) => setKickTarget({ userId: uId, nickname: nick })}
+                                isKickPending={kickMutation.isPending}
+                                kickVariables={kickMutation.variables}
+                                onTeamChange={(t) => teamMutation.mutate(t)}
+                                canChangeTeam={Boolean(me && me.team !== 'A' && !me.isReady && room?.matchType === 'CUSTOM')}
+                                getCharIcon={getCharIcon}
+                            />
                         </SimpleGrid>
                     </Grid.Col>
 
@@ -388,7 +426,19 @@ export default function BattleRoomPage() {
                             <ThemeIcon size={36} radius="md" color="red" variant="light">B</ThemeIcon>
                         </Title>
                         <SimpleGrid cols={1} spacing="lg">
-                            <Slot participant={teamB[0]} team="B" />
+                            <Slot 
+                                participant={teamB[0]} 
+                                team="B" 
+                                currentUserId={user?.id}
+                                matchType={room.matchType}
+                                isOwner={isOwner}
+                                onKick={(uId, nick) => setKickTarget({ userId: uId, nickname: nick })}
+                                isKickPending={kickMutation.isPending}
+                                kickVariables={kickMutation.variables}
+                                onTeamChange={(t) => teamMutation.mutate(t)}
+                                canChangeTeam={Boolean(me && me.team !== 'B' && !me.isReady && room?.matchType === 'CUSTOM')}
+                                getCharIcon={getCharIcon}
+                            />
                         </SimpleGrid>
                     </Grid.Col>
                 </Grid>

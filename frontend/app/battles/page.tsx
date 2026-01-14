@@ -57,7 +57,13 @@ export default function BattleLobbyPage() {
   const { user, isLoading: isUserLoading } = useAuth();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [selectedCharId, setSelectedCharId] = useState<number | null>(null);
+  const [selectedCharId, setSelectedCharId] = useState<number | null>(() => {
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('selected_character_id');
+        return saved ? parseInt(saved) : null;
+    }
+    return null;
+  });
   const [isCharModalOpen, setIsCharModalOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [isAutoMatchModalOpen, setIsAutoMatchModalOpen] = useState(false);
@@ -119,13 +125,7 @@ export default function BattleLobbyPage() {
     };
   }, [user, page, queryClient]);
 
-  // Load selected character from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('selected_character_id');
-    if (saved) {
-      setSelectedCharId(parseInt(saved));
-    }
-  }, []);
+  // Load selected character from localStorage handled in useState initializer
 
   const handleCharSelect = (id: number) => {
     setSelectedCharId(id);
@@ -144,7 +144,7 @@ export default function BattleLobbyPage() {
     }
   };
 
-  const { data: myState, isLoading: isStateLoading } = useQuery({
+  const { data: myState } = useQuery({
     queryKey: battleKeys.state.queryKey,
     queryFn: battleApi.getMyState,
     enabled: !!user,

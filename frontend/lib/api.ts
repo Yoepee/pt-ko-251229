@@ -349,7 +349,7 @@ export interface BattleLobbyEvent {
 export interface BattleRoomEvent {
   type: 'ROOM_SNAPSHOT' | 'READY_CHANGED' | 'PING';
   matchId: number;
-  payload?: any; // Use any to accommodate different payload structures (RoomDetail or {userId, ready})
+  payload?: unknown; // Use unknown to accommodate different payload structures
   ts: number;
 }
 
