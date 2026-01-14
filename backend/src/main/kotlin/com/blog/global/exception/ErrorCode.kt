@@ -57,4 +57,9 @@ enum class ErrorCode(
     BATTLE_START_NOT_ALLOWED(403, "방장만 시작할 수 있습니다."),
     BATTLE_START_CONDITION_NOT_MET(400, "시작 조건이 충족되지 않았습니다."),
     BATTLE_RATE_LIMIT_EXCEEDED(429, "배틀 입력이 너무 많습니다. 잠시 후 다시 시도해주세요."),
+    BATTLE_KICK_NOT_ALLOWED(403, "강퇴할 권한이 없습니다."),
+    BATTLE_TEAM_CHANGE_NOT_ALLOWED(400, "현재 상태에서는 팀을 변경할 수 없습니다."),
+    BATTLE_KICK_TARGET_NOT_IN_ROOM(404, "강퇴 대상이 방에 존재하지 않습니다."),
+    BATTLE_TEAM_CHANGE_CONFLICT(409, "팀 변경이 불가능합니다."),
+    BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY(400, "준비 해제 상태에서만 팀을 변경할 수 있습니다."),
 }

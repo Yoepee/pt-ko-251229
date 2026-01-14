@@ -1,9 +1,11 @@
 package com.blog.domain.battle.controller
 
 import com.blog.domain.battle.dto.request.ChangeCharacterRequest
+import com.blog.domain.battle.dto.request.ChangeTeamRequest
 import com.blog.domain.battle.dto.request.CreateRoomRequest
 import com.blog.domain.battle.dto.request.JoinRoomRequest
 import com.blog.domain.battle.dto.request.RoomReadyRequest
+import com.blog.domain.battle.dto.request.KickRequest
 import com.blog.domain.battle.dto.response.BattleRoomDetailResponse
 import com.blog.domain.battle.dto.response.BattleRoomSummaryResponse
 import com.blog.domain.battle.dto.response.BattleCharacterResponse
@@ -111,5 +113,25 @@ class BattleRoomController(
     ): ResponseEntity<ApiResponse<Unit>> {
         battleService.startRoom(principal.userId, matchId)
         return ResponseEntity.ok(ApiResponse.ok(message = "게임 시작"))
+    }
+
+    @PostMapping("/rooms/{matchId}/kick")
+    fun kick(
+        @AuthenticationPrincipal principal: JwtPrincipal,
+        @PathVariable matchId: Long,
+        @Valid @RequestBody req: KickRequest
+    ): ResponseEntity<ApiResponse<Unit>> {
+        battleService.kickFromRoom(principal.userId, matchId, req.targetUserId)
+        return ResponseEntity.ok(ApiResponse.ok(message = "강퇴"))
+    }
+
+    @PatchMapping("/rooms/{matchId}/team")
+    fun changeTeam(
+        @AuthenticationPrincipal principal: JwtPrincipal,
+        @PathVariable matchId: Long,
+        @Valid @RequestBody req: ChangeTeamRequest
+    ): ResponseEntity<ApiResponse<Unit>> {
+        battleService.changeTeam(principal.userId, matchId, req.team)
+        return ResponseEntity.ok(ApiResponse.ok(message = "팀 변경"))
     }
 }

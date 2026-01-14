@@ -16,6 +16,11 @@ logging:
   level:
     org.springframework.boot.context.config: DEBUG
 
+realtime:
+  sse:
+    keepAliveSec: 15
+    bufferSize: 10000
+
 custom:
   jwt:
     secret: ${CUSTOM__JWT__SECRET_KEY}
