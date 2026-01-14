@@ -1,8 +1,12 @@
 package com.blog.domain.battle.repository
 
+import com.blog.domain.battle.dto.response.MyActiveMatchRow
 import com.blog.domain.battle.dto.response.RoomParticipantRow
 import com.blog.domain.battle.dto.response.TwoPlayers
+import com.blog.domain.battle.entity.BattleMode
 import com.blog.domain.battle.entity.BattleTeam
+import com.blog.domain.battle.entity.BattleMatchStatus
+import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.jooq.Tables.*
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -47,7 +51,32 @@ class BattleParticipantJooqRepository(
             .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
             .fetch(BATTLE_MATCH_PARTICIPANTS.USER_ID, Long::class.java)
 
-    fun getTwoActivePlayers(matchId: Long): TwoPlayers {
+    fun findMyActiveMatch(userId: Long): MyActiveMatchRow? {
+        val p = BATTLE_MATCH_PARTICIPANTS.`as`("p")
+        val m = BATTLE_MATCHES.`as`("m")
+
+        return dsl.select(
+            m.ID, m.STATUS, m.MATCH_TYPE, m.MODE, m.CREATED_BY_USER_ID,
+            p.TEAM
+        )
+            .from(p)
+            .join(m).on(p.MATCH_ID.eq(m.ID))
+            .where(p.USER_ID.eq(userId).and(p.LEFT_AT.isNull))
+            .orderBy(m.CREATED_AT.desc())
+            .limit(1)
+            .fetchOne { r ->
+                MyActiveMatchRow(
+                    matchId = r.get(m.ID)!!,
+                    status = toMatchStatus(r.get(m.STATUS)),
+                    matchType = toMatchType(r.get(m.MATCH_TYPE)),
+                    mode = toMode(r.get(m.MODE)),
+                    team = BattleTeam.valueOf(r.get(p.TEAM)!!.toString()),
+                    ownerUserId = r.get(m.CREATED_BY_USER_ID)
+                )
+            }
+    }
+
+    fun getTwoActivePlayersOrNull(matchId: Long): TwoPlayers? {
         val rows = dsl.select(BATTLE_MATCH_PARTICIPANTS.TEAM, BATTLE_MATCH_PARTICIPANTS.USER_ID)
             .from(BATTLE_MATCH_PARTICIPANTS)
             .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
@@ -56,13 +85,11 @@ class BattleParticipantJooqRepository(
 
         val a = rows.firstOrNull { toBattleTeam(it.get(BATTLE_MATCH_PARTICIPANTS.TEAM)) == BattleTeam.A }
             ?.get(BATTLE_MATCH_PARTICIPANTS.USER_ID)
-            ?: throw IllegalStateException("active team A player not found")
 
         val b = rows.firstOrNull { toBattleTeam(it.get(BATTLE_MATCH_PARTICIPANTS.TEAM)) == BattleTeam.B }
             ?.get(BATTLE_MATCH_PARTICIPANTS.USER_ID)
-            ?: throw IllegalStateException("active team B player not found")
 
-        return TwoPlayers(a, b)
+        return if (a != null && b != null) TwoPlayers(a, b) else null
     }
 
     fun insertParticipant(matchId: Long, userId: Long, team: BattleTeam, characterId: Long, characterVersionNo: Int) {
@@ -75,6 +102,22 @@ class BattleParticipantJooqRepository(
             .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_ID, characterId)
             .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_VERSION_NO, characterVersionNo)
             .set(BATTLE_MATCH_PARTICIPANTS.JOINED_AT, LocalDateTime.now())
+            .execute()
+    }
+
+    fun rejoin(matchId: Long, userId: Long, team: BattleTeam, characterId: Long, characterVersionNo: Int): Int {
+        val now = LocalDateTime.now()
+        return dsl.update(BATTLE_MATCH_PARTICIPANTS)
+            .set(BATTLE_MATCH_PARTICIPANTS.TEAM, team.name)
+            .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_ID, characterId)
+            .set(BATTLE_MATCH_PARTICIPANTS.CHARACTER_VERSION_NO, characterVersionNo)
+            .set(BATTLE_MATCH_PARTICIPANTS.JOINED_AT, now)
+            .set(BATTLE_MATCH_PARTICIPANTS.LEFT_AT, null as LocalDateTime?)
+            .set(BATTLE_MATCH_PARTICIPANTS.READY_AT, null as LocalDateTime?)
+            .set(BATTLE_MATCH_PARTICIPANTS.UPDATED_AT, now)
+            .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+            .and(BATTLE_MATCH_PARTICIPANTS.USER_ID.eq(userId))
+            .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNotNull)
             .execute()
     }
 
@@ -217,8 +260,29 @@ class BattleParticipantJooqRepository(
                 .and(BATTLE_MATCH_PARTICIPANTS.READY_AT.isNotNull)
         )
 
+    fun existsActiveTeam(matchId: Long, team: BattleTeam): Boolean =
+        dsl.fetchExists(
+            dsl.selectOne()
+                .from(BATTLE_MATCH_PARTICIPANTS)
+                .where(BATTLE_MATCH_PARTICIPANTS.MATCH_ID.eq(matchId))
+                .and(BATTLE_MATCH_PARTICIPANTS.LEFT_AT.isNull)
+                .and(BATTLE_MATCH_PARTICIPANTS.TEAM.eq(team.name))
+        )
+
     // -------- enum safe parsers --------
     private fun toBattleTeam(s: String): BattleTeam =
         runCatching { BattleTeam.valueOf(s.trim()) }
             .getOrElse { throw IllegalStateException("Invalid match team in DB: $s") }
+
+    private fun toMatchStatus(s: String): BattleMatchStatus =
+        runCatching { BattleMatchStatus.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match status in DB: $s") }
+
+    private fun toMatchType(s: String): BattleMatchType =
+        runCatching { BattleMatchType.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match type in DB: $s") }
+
+    private fun toMode(s: String): BattleMode =
+        runCatching { BattleMode.valueOf(s.trim()) }
+            .getOrElse { throw IllegalStateException("Invalid match mode in DB: $s") }
 }

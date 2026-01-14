@@ -1,6 +1,7 @@
 package com.blog.domain.battle.repository
 
 import com.blog.domain.battle.dto.response.RatingRow
+import com.blog.domain.battle.dto.response.UserRatingRow
 import com.blog.jooq.Tables.BATTLE_USER_RATINGS
 import org.jooq.DSLContext
 import org.springframework.stereotype.Repository
@@ -67,5 +68,21 @@ class BattleRatingJooqRepository(
             .where(BATTLE_USER_RATINGS.SEASON_ID.eq(seasonId))
             .and(BATTLE_USER_RATINGS.USER_ID.eq(userId))
             .execute()
+    }
+
+    fun getRatingRow(seasonId: Long, userId: Long): UserRatingRow? {
+        val r = BATTLE_USER_RATINGS.`as`("r")
+        return dsl.select(r.RATING, r.MATCHES, r.WINS, r.LOSSES, r.DRAWS)
+            .from(r)
+            .where(r.SEASON_ID.eq(seasonId).and(r.USER_ID.eq(userId)))
+            .fetchOne { rec ->
+                UserRatingRow(
+                    rating = rec.get(r.RATING)!!,
+                    matches = rec.get(r.MATCHES)!!,
+                    wins = rec.get(r.WINS)!!,
+                    losses = rec.get(r.LOSSES)!!,
+                    draws = rec.get(r.DRAWS)!!,
+                )
+            }
     }
 }

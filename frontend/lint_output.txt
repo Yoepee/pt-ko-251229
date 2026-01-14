@@ -1,0 +1,110 @@
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\page.tsx
+  126:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\page.tsx:126:7
+  124 |     const saved = localStorage.getItem('selected_character_id');
+  125 |     if (saved) {
+> 126 |       setSelectedCharId(parseInt(saved));
+      |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  127 |     }
+  128 |   }, []);
+  129 |  react-hooks/set-state-in-effect
+  147:37  warning  'isStateLoading' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx
+   83:13  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx:83:13
+  81 |             return () => clearInterval(timer);
+  82 |         } else {
+> 83 |             setSeconds(0);
+     |             ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  84 |         }
+  85 |     }, [room?.matchType, room?.status]);
+  86 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  react-hooks/set-state-in-effect
+  131:75  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  132:75  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  133:80  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  134:78  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  373:30  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx:373:30
+  371 |                         </Title>
+  372 |                         <SimpleGrid cols={1} spacing="lg">
+> 373 |                             <Slot participant={teamA[0]} team="A" />
+      |                              ^^^^ This component is created during render
+  374 |                         </SimpleGrid>
+  375 |                     </Grid.Col>
+  376 |
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx:268:18
+  266 |     };
+  267 |
+> 268 |     const Slot = ({ participant, team }: { participant?: RoomParticipant, team: 'A' | 'B' }) => (
+      |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 269 |         <Card p="lg" radius="lg" bg={participant ? "#1A1B1E" : "rgba(255,255,255,0.02)"} 
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 270 |               className={`border-2 transition-all ${participant ? (participant.isReady ? 'border-green-500/50 bg-green-500/5' : 'border-white/5') : 'border-dashed border-white/5'}`}
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 332 |         </Card>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 333 |     );
+      | ^^^^^^ The component is created during render here
+  334 |
+  335 |     return (
+  336 |         <Container size="xl" py="xl">                          react-hooks/static-components
+  391:30  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx:391:30
+  389 |                         </Title>
+  390 |                         <SimpleGrid cols={1} spacing="lg">
+> 391 |                             <Slot participant={teamB[0]} team="B" />
+      |                              ^^^^ This component is created during render
+  392 |                         </SimpleGrid>
+  393 |                     </Grid.Col>
+  394 |                 </Grid>
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\app\battles\room\[id]\page.tsx:268:18
+  266 |     };
+  267 |
+> 268 |     const Slot = ({ participant, team }: { participant?: RoomParticipant, team: 'A' | 'B' }) => (
+      |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 269 |         <Card p="lg" radius="lg" bg={participant ? "#1A1B1E" : "rgba(255,255,255,0.02)"} 
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 270 |               className={`border-2 transition-all ${participant ? (participant.isReady ? 'border-green-500/50 bg-green-500/5' : 'border-white/5') : 'border-dashed border-white/5'}`}
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 332 |         </Card>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 333 |     );
+      | ^^^^^^ The component is created during render here
+  334 |
+  335 |     return (
+  336 |         <Container size="xl" py="xl">  react-hooks/static-components
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\lib\api.ts
+  352:13  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\kdy29\study\project\pt-ko-251229\frontend\postcss.config.mjs
+  1:1  warning  Assign object to a variable before exporting as module default  import/no-anonymous-default-export
+
+✖ 11 problems (9 errors, 2 warnings)
+

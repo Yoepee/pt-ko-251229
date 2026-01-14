@@ -62,4 +62,6 @@ enum class ErrorCode(
     BATTLE_KICK_TARGET_NOT_IN_ROOM(404, "강퇴 대상이 방에 존재하지 않습니다."),
     BATTLE_TEAM_CHANGE_CONFLICT(409, "팀 변경이 불가능합니다."),
     BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY(400, "준비 해제 상태에서만 팀을 변경할 수 있습니다."),
+    BATTLE_SEASON_NOT_FOUND(404, "활성 시즌을 찾을 수 없습니다."),
+    BATTLE_RATING_NOT_FOUND(404, "사용자 레이팅 정보를 찾을 수 없습니다."),
 }

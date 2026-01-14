@@ -19,9 +19,6 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "battle_match_participants",
-    uniqueConstraints = [
-        UniqueConstraint(name = "ux_battle_participants_match_user", columnNames = ["match_id", "user_id"])
-    ],
     indexes = [
         Index(name = "ix_battle_participants_user_joined", columnList = "user_id,joined_at"),
         Index(name = "ix_battle_participants_match_team", columnList = "match_id,team"),
