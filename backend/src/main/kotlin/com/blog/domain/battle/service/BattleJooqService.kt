@@ -5,6 +5,8 @@ import com.blog.domain.battle.dto.realtime.LobbyEventType
 import com.blog.domain.battle.dto.realtime.ReadyChangedPayload
 import com.blog.domain.battle.dto.realtime.RoomEvent
 import com.blog.domain.battle.dto.realtime.RoomEventType
+import com.blog.domain.battle.dto.realtime.WsFinishedPayload
+import com.blog.domain.battle.dto.realtime.WsStatePayload
 import com.blog.domain.battle.dto.request.AutoMatchRequest
 import com.blog.domain.battle.dto.request.BattleInputRequest
 import com.blog.domain.battle.dto.request.CreateRoomRequest
@@ -19,20 +21,25 @@ import com.blog.domain.battle.dto.response.BattleRoomSnapshotResponse
 import com.blog.domain.battle.dto.response.LobbyStateType
 import com.blog.domain.battle.dto.response.MyBattleStatsResponse
 import com.blog.domain.battle.dto.response.MyLobbyStateResponse
+import com.blog.domain.battle.entity.BattleEndReason
 import com.blog.domain.battle.entity.BattleMatchStatus
 import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.domain.battle.entity.BattleMode
 import com.blog.domain.battle.entity.BattleTeam
+import com.blog.domain.battle.entity.BattleWinnerTeam
 import com.blog.domain.battle.repository.*
 import com.blog.global.common.PageResponse
 import com.blog.global.exception.ApiException
 import com.blog.global.exception.ErrorCode
 import com.blog.global.realtime.RealtimeKeys
 import com.blog.global.realtime.SseHub
+import com.blog.global.realtime.WsSessionRegistry
 import jakarta.transaction.Transactional
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Mono
+import tools.jackson.databind.ObjectMapper
 import java.time.ZoneId
 import kotlin.math.pow
 
@@ -46,7 +53,9 @@ class BattleJooqService(
     private val ratingRepo: BattleRatingJooqRepository,
     private val historyRepo: BattleRatingHistoryJooqRepository,
     private val battleRedis: BattleRedisPort,
-    private val sseHub: SseHub
+    private val sseHub: SseHub,
+    private val objectMapper: ObjectMapper,
+    private val registry: WsSessionRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -271,89 +280,41 @@ class BattleJooqService(
     @Transactional
     fun finishByWorker(matchId: Long) {
         val info = matchRepo.getMatchInfo(matchId) ?: return
-
-        // 이미 끝났으면 무시
         if (info.status != BattleMatchStatus.RUNNING) return
 
         val snap = battleRedis.getLaneSnapshot(matchId)
-
         val sumA = snap.lane0A + snap.lane1A + snap.lane2A
         val sumB = snap.lane0B + snap.lane1B + snap.lane2B
 
-        val winner = when {
-            sumA > sumB -> BattleTeam.A
-            sumB > sumA -> BattleTeam.B
-            else -> null // draw
+        val winner: BattleWinnerTeam = when {
+            sumA > sumB -> BattleWinnerTeam.A
+            sumB > sumA -> BattleWinnerTeam.B
+            else -> BattleWinnerTeam.DRAW
         }
 
-        finishMatch(
+        val lane0 = snap.lane0A + snap.lane0B
+        val lane1 = snap.lane1A + snap.lane1B
+        val lane2 = snap.lane2A + snap.lane2B
+
+        val finishedNow = finishMatch(
             matchId = matchId,
-            winnerTeam = winner,                 // ✅ enum/nullable
-            endReason = "TIMEOUT",
-            lane0 = snap.lane0A + snap.lane0B,   // 결과 테이블이 합산형이면 이대로
-            lane1 = snap.lane1A + snap.lane1B,
-            lane2 = snap.lane2A + snap.lane2B,
-            inputsA = snap.inputsA,
-            inputsB = snap.inputsB,
+            winner = winner,
+            endReason = BattleEndReason.TIMEUP,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = snap.inputsA, inputsB = snap.inputsB,
             vsBot = false,
             extraStatsJson = """{"sumA":$sumA,"sumB":$sumB}"""
         )
 
-        battleRedis.clearMatchKeys(matchId)
-    }
+        if (!finishedNow) return
 
-    /**
-     * 내부 finish (DB 결과 저장 + (조건이면) 레이팅 반영)
-     * winnerTeam: A/B/null(draw)
-     */
-    @Transactional
-    fun finishMatch(
-        matchId: Long,
-        winnerTeam: BattleTeam?, // ✅ enum으로
-        endReason: String,
-        lane0: Int, lane1: Int, lane2: Int,
-        inputsA: Int, inputsB: Int,
-        vsBot: Boolean,
-        extraStatsJson: String = "{}"
-    ) {
-        val info = matchRepo.getMatchInfo(matchId)
-            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
-
-        if (info.status != BattleMatchStatus.RUNNING) {
-            // RUNNING 아니면 종료 불가(혹은 멱등 처리)
-            return
-        }
-
-        // 원자적 FINISHED 전환
-        val updated = matchRepo.finishIfRunning(matchId)
-        if (updated == 0) return
-
-        // 결과 저장
-        val winnerStr = winnerTeam?.name ?: "DRAW"
-        resultRepo.insertResult(
+        afterFinished(
             matchId = matchId,
-            winnerTeam = winnerStr,
-            endReason = endReason,
+            winner = winner,
+            reason = BattleEndReason.TIMEUP,
             lane0 = lane0, lane1 = lane1, lane2 = lane2,
-            inputsA = inputsA, inputsB = inputsB,
-            extraStatsJson = extraStatsJson
-        )
-
-        // 레이팅 반영: ranked + 사람vs사람만
-        if (info.matchType != BattleMatchType.RANKED || vsBot) return
-
-        val p = partRepo.getTwoActivePlayersOrNull(matchId)
-        if (p == null) {
-            log.warn("finishMatch: missing active players for elo. matchId={}, seasonId={}", matchId, info.seasonId)
-            return
-        }
-
-        applyEloAndHistory(
-            seasonId = info.seasonId,
-            matchId = matchId,
-            userA = p.userA,
-            userB = p.userB,
-            winnerTeam = winnerTeam
+            inputsA = snap.inputsA, inputsB = snap.inputsB,
+            extra = mapOf("sumA" to sumA, "sumB" to sumB)
         )
     }
 
@@ -887,6 +848,242 @@ class BattleJooqService(
         )
     }
 
+    @Transactional
+    fun onWsConnected(userId: Long, matchId: Long) {
+        battleRedis.clearDisconnected(matchId, userId) // 재접속이면 취소
+    }
+
+    @Transactional
+    fun onWsDisconnected(userId: Long, matchId: Long) {
+        val status = matchRepo.findMatchStatus(matchId) ?: return
+        if (status != BattleMatchStatus.RUNNING) return
+
+        // 참가자 아니면 무시
+        partRepo.findActiveTeam(matchId, userId) ?: return
+
+        // 3초 유예 마킹만
+        val until = System.currentTimeMillis() + 3_000
+        battleRedis.markDisconnected(matchId, userId, until)
+    }
+
+    @Transactional
+    fun checkAndFinishForfeitIfNeeded(matchId: Long) {
+        val status = matchRepo.findMatchStatus(matchId) ?: return
+        if (status != BattleMatchStatus.RUNNING) return
+
+        val users = partRepo.getTwoActivePlayersOrNull(matchId) ?: return
+        val now = System.currentTimeMillis()
+
+        val untilA = battleRedis.getDisconnectedUntil(matchId, users.userA)
+        val untilB = battleRedis.getDisconnectedUntil(matchId, users.userB)
+
+        val forfeitUserId =
+            if (untilA != null && now >= untilA) users.userA
+            else if (untilB != null && now >= untilB) users.userB
+            else null
+        if (forfeitUserId == null) return
+
+        val myTeam = partRepo.findActiveTeam(matchId, forfeitUserId) ?: return
+        val winnerTeam: BattleTeam = if (myTeam == BattleTeam.A) BattleTeam.B else BattleTeam.A
+        val winner: BattleWinnerTeam = winnerTeam.toWinner()
+
+        val snap = battleRedis.getLaneSnapshot(matchId)
+        val lane0 = snap.lane0A + snap.lane0B
+        val lane1 = snap.lane1A + snap.lane1B
+        val lane2 = snap.lane2A + snap.lane2B
+
+        val finishedNow = finishMatch(
+            matchId = matchId,
+            winner = winner,
+            endReason = BattleEndReason.FORFEIT,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = snap.inputsA,
+            inputsB = snap.inputsB,
+            vsBot = false,
+            extraStatsJson = """{"forfeitUserId":$forfeitUserId}"""
+        )
+        if (!finishedNow) return
+
+        battleRedis.clearDisconnected(matchId, forfeitUserId)
+
+        afterFinished(
+            matchId = matchId,
+            winner = winner,
+            reason = BattleEndReason.FORFEIT,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = snap.inputsA, inputsB = snap.inputsB,
+            extra = mapOf("forfeitUserId" to forfeitUserId)
+        )
+    }
+
+    @Transactional
+    fun finishMatch(
+        matchId: Long,
+        winner: BattleWinnerTeam,          // ✅ A/B/DRAW
+        endReason: BattleEndReason,        // ✅ enum
+        lane0: Int, lane1: Int, lane2: Int,
+        inputsA: Int, inputsB: Int,
+        vsBot: Boolean,
+        extraStatsJson: String = "{}"
+    ): Boolean {
+        val info = matchRepo.getMatchInfo(matchId)
+            ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
+
+        if (info.status != BattleMatchStatus.RUNNING) return false
+
+        // ✅ 원자적 FINISHED 전환 (멱등)
+        val updated = matchRepo.finishIfRunning(matchId)
+        if (updated == 0) return false
+
+        // ✅ 결과 저장
+        resultRepo.insertResult(
+            matchId = matchId,
+            winnerTeam = winner,
+            endReason = endReason,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = inputsA, inputsB = inputsB,
+            extraStatsJson = extraStatsJson
+        )
+
+        // ✅ 레이팅 반영: ranked + 사람vs사람만
+        if (info.matchType != BattleMatchType.RANKED || vsBot) return true
+
+        val p = partRepo.getTwoActivePlayersOrNull(matchId) ?: return true
+
+        // applyElo는 BattleTeam? (DRAW = null) 쓰고 있으니 변환
+        applyEloAndHistory(
+            seasonId = info.seasonId,
+            matchId = matchId,
+            userA = p.userA,
+            userB = p.userB,
+            winnerTeam = winner.toTeamOrNull()
+        )
+
+        return true
+    }
+
+    private fun broadcastStateIfAny(matchId: Long): Mono<Void> {
+        val key = RealtimeKeys.battle(matchId)
+
+        // 접속자 없으면 스킵
+        if (registry.connectedCount(key) == 0) return Mono.empty()
+
+        // 상태는 RUNNING일 때만 의미 있으니 가드
+        val status = matchRepo.findMatchStatus(matchId) ?: return Mono.empty()
+        if (status != BattleMatchStatus.RUNNING) return Mono.empty()
+
+        val snap = battleRedis.getLaneSnapshot(matchId)
+        val endsAt = battleRedis.getEndsAt(matchId)
+
+        val sumA = snap.lane0A + snap.lane1A + snap.lane2A
+        val sumB = snap.lane0B + snap.lane1B + snap.lane2B
+
+        val payload = WsStatePayload(
+            matchId = matchId,
+            endsAtEpochMs = endsAt,
+            lane0 = snap.lane0A + snap.lane0B,
+            lane1 = snap.lane1A + snap.lane1B,
+            lane2 = snap.lane2A + snap.lane2B,
+            sumA = sumA,
+            sumB = sumB,
+            inputsA = snap.inputsA,
+            inputsB = snap.inputsB,
+        )
+
+        val json = objectMapper.writeValueAsString(payload)
+        return registry.broadcast(key, json)
+    }
+
+    private fun broadcastFinished(
+        matchId: Long,
+        winner: BattleWinnerTeam,
+        reason: BattleEndReason,
+        lane0: Int, lane1: Int, lane2: Int,
+        inputsA: Int, inputsB: Int,
+        extra: Map<String, Any?> = emptyMap()
+    ): Mono<Void> {
+        val key = RealtimeKeys.battle(matchId)
+
+        if (registry.connectedCount(key) == 0) return Mono.empty()
+        val payload = WsFinishedPayload(
+            matchId = matchId,
+            winner = winner,
+            reason = reason,
+            lane0 = lane0,
+            lane1 = lane1,
+            lane2 = lane2,
+            inputsA = inputsA,
+            inputsB = inputsB,
+            extra = extra
+        )
+        val json = objectMapper.writeValueAsString(payload)
+        return registry.broadcast(key, json)
+    }
+
+    @Transactional
+    fun finishEarlyWin(matchId: Long, winnerTeam: BattleTeam, extra: Map<String, Any?> = emptyMap()) {
+        val snap = battleRedis.getLaneSnapshot(matchId)
+
+        val winner = winnerTeam.toWinner()
+        val lane0 = snap.lane0A + snap.lane0B
+        val lane1 = snap.lane1A + snap.lane1B
+        val lane2 = snap.lane2A + snap.lane2B
+
+        val finishedNow = finishMatch(
+            matchId = matchId,
+            winner = winner,
+            endReason = BattleEndReason.EARLY_WIN,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = snap.inputsA, inputsB = snap.inputsB,
+            vsBot = false,
+            extraStatsJson = objectMapper.writeValueAsString(extra)
+        )
+        if (!finishedNow) return
+
+        afterFinished(
+            matchId = matchId,
+            winner = winner,
+            reason = BattleEndReason.EARLY_WIN,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = snap.inputsA, inputsB = snap.inputsB,
+            extra = extra
+        )
+    }
+
+    private fun afterFinished(
+        matchId: Long,
+        winner: BattleWinnerTeam,
+        reason: BattleEndReason,
+        lane0: Int, lane1: Int, lane2: Int,
+        inputsA: Int, inputsB: Int,
+        extra: Map<String, Any?> = emptyMap(),
+    ) {
+        // Redis 정리
+        battleRedis.clearMatchKeys(matchId)
+        battleRedis.removeRunningMatch(matchId)
+
+        // WS FINISHED (구독자에게 즉시)
+        broadcastFinished(
+            matchId = matchId,
+            winner = winner,
+            reason = reason,
+            lane0 = lane0, lane1 = lane1, lane2 = lane2,
+            inputsA = inputsA, inputsB = inputsB,
+            extra = extra
+        ).subscribe()
+
+        // SSE ROOM snapshot (WS 놓쳐도 동기화)
+        emitRoomSnapshot(matchId)
+
+        // SSE lobby 갱신
+        emitLobbyRoomsChanged()
+    }
+
+    private fun onRoomChangedForLobbyAndRoom(matchId: Long) {
+        emitRoomSnapshot(matchId)
+        emitLobbyRoomsChanged()
+    }
+
     private fun emitLobbyRoomsChanged() {
         sseHub.publish(
             RealtimeKeys.lobby(),
@@ -895,4 +1092,13 @@ class BattleJooqService(
     }
 
     private fun BattleTeam.opposite() = if (this == BattleTeam.A) BattleTeam.B else BattleTeam.A
+    fun BattleTeam.toWinner(): BattleWinnerTeam =
+        if (this == BattleTeam.A) BattleWinnerTeam.A else BattleWinnerTeam.B
+
+    fun BattleWinnerTeam.toTeamOrNull(): BattleTeam? =
+        when (this) {
+            BattleWinnerTeam.A -> BattleTeam.A
+            BattleWinnerTeam.B -> BattleTeam.B
+            BattleWinnerTeam.DRAW -> null
+        }
 }

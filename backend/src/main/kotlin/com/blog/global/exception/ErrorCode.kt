@@ -11,6 +11,12 @@ enum class ErrorCode(
     CONFLICT(409, "이미 존재합니다."),
     INTERNAL_ERROR(500, "서버 오류가 발생했습니다."),
 
+    // Socket
+    WS_INVALID_PATH(400, "WebSocket 경로가 올바르지 않습니다."),
+    WS_UNAUTHORIZED(401, "WebSocket 인증이 필요합니다."),
+    WS_FORBIDDEN(403, "WebSocket 접근 권한이 없습니다."),
+
+    // User
     USERNAME_DUPLICATED(409, "이미 존재하는 계정 입니다."),
     USER_NOT_FOUND(404, "사용자를 찾을 수 없습니다."),
     LOGIN_FAILED(401, "아이디 또는 비밀번호가 올바르지 않습니다."),
@@ -64,4 +70,6 @@ enum class ErrorCode(
     BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY(400, "준비 해제 상태에서만 팀을 변경할 수 있습니다."),
     BATTLE_SEASON_NOT_FOUND(404, "활성 시즌을 찾을 수 없습니다."),
     BATTLE_RATING_NOT_FOUND(404, "사용자 레이팅 정보를 찾을 수 없습니다."),
+    BATTLE_MATCH_ALREADY_FINISHED(409, "이미 종료된 매치입니다."),
+    BATTLE_MATCH_CANCELED(409, "취소된 매치입니다."),
 }
