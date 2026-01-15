@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException
+
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -50,6 +52,13 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(400)
             .body(ApiResponse.fail(status = 400, message = msg))
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException::class)
+    fun handleAsyncNotUsable(ex: Exception, req: HttpServletRequest): ResponseEntity<Void> {
+        // SSE 끊김: 정상 상황이 많음
+        log.debug("SSE disconnected [{} {}] msg={}", req.method, req.requestURI, ex.message)
+        return ResponseEntity.noContent().build()
     }
 
     @ExceptionHandler(Exception::class)

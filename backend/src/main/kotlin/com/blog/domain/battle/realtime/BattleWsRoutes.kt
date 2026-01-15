@@ -11,5 +11,7 @@ class BattleWsRoutes(
 ) {
     @Bean
     fun battleWsMapping(): HandlerMapping =
-        SimpleUrlHandlerMapping(mapOf("/ws/battles/{matchId}" to battleWsHandler), -1)
+        SimpleUrlHandlerMapping(mapOf(
+            "/ws/battles/*" to battleWsHandler
+        ), -1)
 }

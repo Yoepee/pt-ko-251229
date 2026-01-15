@@ -6,18 +6,18 @@ import com.blog.domain.battle.dto.realtime.ReadyChangedPayload
 import com.blog.domain.battle.dto.realtime.RoomEvent
 import com.blog.domain.battle.dto.realtime.RoomEventType
 import com.blog.domain.battle.dto.realtime.WsFinishedPayload
-import com.blog.domain.battle.dto.realtime.WsStatePayload
 import com.blog.domain.battle.dto.request.AutoMatchRequest
 import com.blog.domain.battle.dto.request.BattleInputRequest
 import com.blog.domain.battle.dto.request.CreateRoomRequest
 import com.blog.domain.battle.dto.request.RoomOrder
 import com.blog.domain.battle.dto.response.AutoMatchResponse
+import com.blog.domain.battle.dto.response.BattleCharacterResponse
 import com.blog.domain.battle.dto.response.BattleMatchDetailResponse
 import com.blog.domain.battle.dto.response.BattleRoomDetailResponse
 import com.blog.domain.battle.dto.response.BattleRoomParticipantResponse
-import com.blog.domain.battle.dto.response.BattleRoomSummaryResponse
-import com.blog.domain.battle.dto.response.BattleCharacterResponse
 import com.blog.domain.battle.dto.response.BattleRoomSnapshotResponse
+import com.blog.domain.battle.dto.response.BattleRoomSummaryResponse
+import com.blog.domain.battle.dto.response.LaneSnapshot
 import com.blog.domain.battle.dto.response.LobbyStateType
 import com.blog.domain.battle.dto.response.MyBattleStatsResponse
 import com.blog.domain.battle.dto.response.MyLobbyStateResponse
@@ -27,7 +27,13 @@ import com.blog.domain.battle.entity.BattleMatchType
 import com.blog.domain.battle.entity.BattleMode
 import com.blog.domain.battle.entity.BattleTeam
 import com.blog.domain.battle.entity.BattleWinnerTeam
-import com.blog.domain.battle.repository.*
+import com.blog.domain.battle.repository.BattleCharacterJooqRepository
+import com.blog.domain.battle.repository.BattleMatchJooqRepository
+import com.blog.domain.battle.repository.BattleParticipantJooqRepository
+import com.blog.domain.battle.repository.BattleRatingHistoryJooqRepository
+import com.blog.domain.battle.repository.BattleRatingJooqRepository
+import com.blog.domain.battle.repository.BattleSeasonJooqRepository
+import com.blog.domain.battle.repository.BattleResultJooqRepository
 import com.blog.global.common.PageResponse
 import com.blog.global.exception.ApiException
 import com.blog.global.exception.ErrorCode
@@ -42,6 +48,7 @@ import reactor.core.publisher.Mono
 import tools.jackson.databind.ObjectMapper
 import java.time.ZoneId
 import kotlin.math.pow
+
 
 @Service
 class BattleJooqService(
@@ -70,7 +77,7 @@ class BattleJooqService(
     @Transactional
     fun createRankedMatch(userId: Long, mode: BattleMode): Long {
         val seasonId = seasonRepo.findActiveSeasonId()
-            ?: throw ApiException(ErrorCode.NOT_FOUND) // 또는 BATTLE_SEASON_NOT_FOUND
+            ?: throw ApiException(ErrorCode.NOT_FOUND)
 
         val focusLane = if (mode.name.contains("1LANE")) 1 else null
 
@@ -105,25 +112,15 @@ class BattleJooqService(
         val status = matchRepo.findMatchStatus(matchId) ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
         if (status != BattleMatchStatus.WAITING) throw ApiException(ErrorCode.BATTLE_MATCH_NOT_LEAVABLE)
 
-        // ✅ 멱등: active 참가자가 아니면 그냥 종료
         if (!partRepo.existsActiveParticipant(matchId, userId)) return
 
-        // ✅ left_at 찍기 (이미 left면 0)
         val affected = partRepo.markLeft(matchId, userId)
         if (affected == 0) return
 
         val remain = partRepo.countActiveParticipants(matchId)
         if (remain == 0L) {
             matchRepo.cancelIfWaiting(matchId)
-
-            emitRoomEvent(
-                matchId,
-                RoomEvent(
-                    type = RoomEventType.MATCH_CANCELED,
-                    matchId = matchId,
-                    payload = null
-                )
-            )
+            emitRoomEvent(matchId, RoomEvent(RoomEventType.MATCH_CANCELED, matchId, null))
             emitRoomSnapshot(matchId)
             return
         }
@@ -138,15 +135,7 @@ class BattleJooqService(
                 return
             }
             matchRepo.updateOwner(matchId, newOwner)
-
-            emitRoomEvent(
-                matchId,
-                RoomEvent(
-                    type = RoomEventType.OWNER_CHANGED,
-                    matchId = matchId,
-                    payload = mapOf("ownerUserId" to newOwner)
-                )
-            )
+            emitRoomEvent(matchId, RoomEvent(RoomEventType.OWNER_CHANGED, matchId, mapOf("ownerUserId" to newOwner)))
         }
 
         emitRoomSnapshot(matchId)
@@ -162,17 +151,16 @@ class BattleJooqService(
             ?: throw ApiException(ErrorCode.BATTLE_SEASON_NOT_FOUND)
 
         val joinableMatchId = matchRepo.lockJoinableMatchId(req.matchType, req.mode, MAX_PLAYERS)
-
         val shouldAutoStart = (req.matchType == BattleMatchType.RANKED)
 
         return if (joinableMatchId != null) {
             val team = joinAs(joinableMatchId, userId, preferTeam = BattleTeam.B, characterId = req.characterId)
-
             val count = partRepo.countActiveParticipants(joinableMatchId)
 
             if (shouldAutoStart && count >= MAX_PLAYERS.toLong()) {
                 matchRepo.updateMatchToRunning(joinableMatchId)
                 scheduleMatchFinish(joinableMatchId)
+                battleRedis.addRunningMatch(joinableMatchId)
                 emitRoomEvent(joinableMatchId, RoomEvent(RoomEventType.MATCH_STARTED, joinableMatchId, null))
                 emitRoomSnapshot(joinableMatchId)
                 AutoMatchResponse(joinableMatchId, BattleMatchStatus.RUNNING, team)
@@ -182,7 +170,6 @@ class BattleJooqService(
             }
         } else {
             val focusLane = if (req.mode.name.contains("1LANE")) 1 else null
-
             val matchId = matchRepo.insertMatch(
                 seasonId = seasonId,
                 matchType = req.matchType,
@@ -190,11 +177,8 @@ class BattleJooqService(
                 createdByUserId = userId,
                 focusLane = focusLane
             )
-
             val team = joinAs(matchId, userId, preferTeam = BattleTeam.A, characterId = req.characterId)
-
             emitRoomSnapshot(matchId)
-
             AutoMatchResponse(matchId, BattleMatchStatus.WAITING, team)
         }
     }
@@ -210,7 +194,6 @@ class BattleJooqService(
             val aTaken = partRepo.existsActiveTeam(matchId, BattleTeam.A)
             val bTaken = partRepo.existsActiveTeam(matchId, BattleTeam.B)
 
-            // preferTeam이 비어있으면 우선 배정
             if (preferTeam == BattleTeam.A && !aTaken) return BattleTeam.A
             if (preferTeam == BattleTeam.B && !bTaken) return BattleTeam.B
 
@@ -237,18 +220,21 @@ class BattleJooqService(
 
     @Transactional
     fun submitInput(userId: Long, matchId: Long, req: BattleInputRequest) {
-        // match 상태 확인
         val status = matchRepo.findMatchStatus(matchId)
             ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
         if (status != BattleMatchStatus.RUNNING) throw ApiException(ErrorCode.BATTLE_MATCH_NOT_RUNNING)
 
-        // 참가자/팀 확인
         val team = partRepo.findActiveTeam(matchId, userId)
             ?: throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
-        // Redis 누적 + rate limit
         val ok = battleRedis.submitInput(matchId, userId, req.lane, req.power, team)
         if (!ok) throw ApiException(ErrorCode.BATTLE_RATE_LIMIT_EXCEEDED)
+
+        val snap = battleRedis.getLaneSnapshot(matchId)
+        val earlyWinnerTeam: BattleTeam? = detectEarlyWinner(snap) // 너 규칙에 맞게 구현
+        if (earlyWinnerTeam != null) {
+            finishEarlyWin(matchId, earlyWinnerTeam, extra = mapOf("by" to "EARLY_WIN_RULE"))
+        }
     }
 
     @Transactional
@@ -257,11 +243,9 @@ class BattleJooqService(
             ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
 
         val myTeam = partRepo.findActiveTeam(matchId, userId)
-
         val snap = battleRedis.getLaneSnapshot(matchId)
         val endsAt = if (status == BattleMatchStatus.RUNNING) battleRedis.getEndsAt(matchId) else null
 
-        // 응답은 UI용(팀 합산 표시가 필요하면 여기서 합산)
         return BattleMatchDetailResponse(
             matchId = matchId,
             status = status,
@@ -323,9 +307,8 @@ class BattleJooqService(
         matchId: Long,
         userA: Long,
         userB: Long,
-        winnerTeam: BattleTeam?, // ✅ enum/nullable
+        winnerTeam: BattleTeam?,
     ) {
-        // 락 순서 고정
         val (first, second) = if (userA <= userB) userA to userB else userB to userA
 
         ratingRepo.insertIfAbsent(seasonId, first)
@@ -368,37 +351,18 @@ class BattleJooqService(
         ratingRepo.updateRating(seasonId, userA, newA, winA, lossA, drawA)
         ratingRepo.updateRating(seasonId, userB, newB, winB, lossB, drawB)
 
-        historyRepo.insert(
-            seasonId = seasonId,
-            userId = userA,
-            matchId = matchId,
-            ratingBefore = beforeA,
-            ratingAfter = newA,
-            delta = deltaA,
-            reason = "MATCH_RESULT",
-            vsBot = false
-        )
-        historyRepo.insert(
-            seasonId = seasonId,
-            userId = userB,
-            matchId = matchId,
-            ratingBefore = beforeB,
-            ratingAfter = newB,
-            delta = deltaB,
-            reason = "MATCH_RESULT",
-            vsBot = false
-        )
+        historyRepo.insert(seasonId, userA, matchId, beforeA, newA, deltaA, "MATCH_RESULT", false)
+        historyRepo.insert(seasonId, userB, matchId, beforeB, newB, deltaB, "MATCH_RESULT", false)
     }
 
     fun listWaitingRooms(pageable: Pageable): PageResponse<BattleRoomSummaryResponse> {
         val safePage = pageable.pageNumber.coerceAtLeast(0)
         val safeSize = pageable.pageSize.coerceIn(1, 100)
 
-        // 정렬 허용 범위를 통제 (화이트리스트)
         val sort = pageable.sort
         val order = when {
             sort.getOrderFor("createdAt")?.isDescending == true -> RoomOrder.CREATED_AT_DESC
-            sort.getOrderFor("createdAt")?.isAscending == true  -> RoomOrder.CREATED_AT_ASC
+            sort.getOrderFor("createdAt")?.isAscending == true -> RoomOrder.CREATED_AT_ASC
             else -> RoomOrder.CREATED_AT_DESC
         }
 
@@ -417,10 +381,7 @@ class BattleJooqService(
                     ownerUserId = r.ownerUserId,
                     currentPlayers = r.activeCount,
                     maxPlayers = MAX_PLAYERS,
-                    createdAtEpochMs = r.createdAt
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli()
+                    createdAtEpochMs = r.createdAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 )
             },
             page = safePage,
@@ -437,12 +398,7 @@ class BattleJooqService(
             ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
 
         val owner = matchRepo.findOwnerUserId(matchId)
-
-        val parts = partRepo.listActiveParticipantsForRoom(
-            seasonId = info.seasonId,
-            matchId = matchId
-        )
-
+        val parts = partRepo.listActiveParticipantsForRoom(info.seasonId, matchId)
         val active = partRepo.countActiveParticipants(matchId)
         val ready = partRepo.countReadyActiveParticipants(matchId)
 
@@ -499,10 +455,8 @@ class BattleJooqService(
         }
 
         val team = pickTeam()
-
         val revived = partRepo.rejoin(matchId, userId, team, cid, cver)
         if (revived == 0) {
-            // (선택) 경합 대비 재계산
             val finalTeam = pickTeam()
             partRepo.insertParticipant(matchId, userId, finalTeam, cid, cver)
         }
@@ -528,19 +482,14 @@ class BattleJooqService(
             ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
 
         if (status != BattleMatchStatus.WAITING) {
-            // RUNNING에서 바꾸게 할지 정책 선택
             throw ApiException(ErrorCode.BATTLE_CHARACTER_CHANGE_NOT_ALLOWED)
         }
 
-        // 참가자인지 확인(active)
         if (!partRepo.existsActiveParticipant(matchId, userId)) {
             throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
         }
 
-        // 캐릭터 유효성(활성/삭제)
         val versionNo = characterRepo.findCharacterVersionNo(characterId)
-        // findCharacterVersionNo가 "없으면 예외"를 던지지 않으면 여기서 NOT_FOUND 처리
-
         val updated = partRepo.updateCharacter(matchId, userId, characterId, versionNo)
         if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
@@ -556,7 +505,6 @@ class BattleJooqService(
             throw ApiException(ErrorCode.BATTLE_READY_NOT_ALLOWED)
         }
 
-        // 참가자 아니면 ready 불가
         if (!partRepo.existsActiveParticipant(matchId, userId)) {
             throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
         }
@@ -565,14 +513,7 @@ class BattleJooqService(
         val updated = partRepo.setReady(matchId, userId, readyAt)
         if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
-        emitRoomEvent(
-            matchId,
-            RoomEvent(
-                type = RoomEventType.READY_CHANGED,
-                matchId = matchId,
-                payload = ReadyChangedPayload(userId, ready)
-            )
-        )
+        emitRoomEvent(matchId, RoomEvent(RoomEventType.READY_CHANGED, matchId, ReadyChangedPayload(userId, ready)))
         emitRoomSnapshot(matchId)
     }
 
@@ -597,20 +538,13 @@ class BattleJooqService(
             throw ApiException(ErrorCode.BATTLE_START_CONDITION_NOT_MET)
         }
 
-        // ✅ 원자적 시작 (WAITING일 때만 RUNNING)
         val updated = matchRepo.startIfWaiting(matchId)
-        if (updated == 0) return // 멱등: 누가 먼저 시작했으면 조용히 종료(또는 예외)
+        if (updated == 0) return
 
         scheduleMatchFinish(matchId)
+        battleRedis.addRunningMatch(matchId)
 
-        emitRoomEvent(
-            matchId,
-            RoomEvent(
-                type = RoomEventType.MATCH_STARTED,
-                matchId = matchId,
-                payload = null
-            )
-        )
+        emitRoomEvent(matchId, RoomEvent(RoomEventType.MATCH_STARTED, matchId, null))
         emitRoomSnapshot(matchId)
     }
 
@@ -623,13 +557,10 @@ class BattleJooqService(
         val owner = matchRepo.findOwnerUserId(matchId)
         if (owner == null || owner != ownerUserId) throw ApiException(ErrorCode.BATTLE_KICK_NOT_ALLOWED)
 
-        // 방장은 자기 자신 강퇴 금지
         if (targetUserId == ownerUserId) throw ApiException(ErrorCode.BATTLE_KICK_NOT_ALLOWED)
 
-        // 대상이 active 참가자가 아니면 멱등 처리(또는 예외)
         if (!partRepo.existsActiveParticipant(matchId, targetUserId)) return
 
-        // left_at 처리 + ready 초기화(readyAt이 leftAt에 의미없지만 깔끔하게)
         val affected = partRepo.markLeft(matchId, targetUserId)
         if (affected == 0) return
 
@@ -641,14 +572,7 @@ class BattleJooqService(
             return
         }
 
-        emitRoomEvent(
-            matchId,
-            RoomEvent(
-                type = RoomEventType.USER_KICKED,
-                matchId = matchId,
-                payload = mapOf("userId" to targetUserId)
-            )
-        )
+        emitRoomEvent(matchId, RoomEvent(RoomEventType.USER_KICKED, matchId, mapOf("userId" to targetUserId)))
         emitRoomSnapshot(matchId)
     }
 
@@ -658,11 +582,10 @@ class BattleJooqService(
             ?: throw ApiException(ErrorCode.BATTLE_MATCH_NOT_FOUND)
         if (status != BattleMatchStatus.WAITING) throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
 
-        // active 참가자만
         val myTeam = partRepo.findActiveTeam(matchId, userId)
             ?: throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
-        if (myTeam == toTeam) return // 멱등
+        if (myTeam == toTeam) return
 
         if (partRepo.isReady(matchId, userId)) {
             throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
@@ -670,32 +593,20 @@ class BattleJooqService(
 
         val active = partRepo.countActiveParticipants(matchId)
 
-        // -------------------------
-        // 2인(MVP) 정책
-        // -------------------------
         if (MAX_PLAYERS == 2) {
-            // 혼자만 있는 방이면 그냥 변경 가능 (단, READY는 이미 false여야 함)
             if (active == 1L) {
                 val updated = partRepo.updateTeam(matchId, userId, toTeam)
                 if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
-
-                emitRoomEvent(
-                    matchId,
-                    RoomEvent(
-                        type = RoomEventType.TEAM_CHANGED,
-                        matchId = matchId,
-                        payload = mapOf("userId" to userId, "team" to toTeam.name)
-                    )
+                emitRoomEvent(matchId,
+                    RoomEvent(RoomEventType.TEAM_CHANGED, matchId, mapOf("userId" to userId, "team" to toTeam.name))
                 )
                 emitRoomSnapshot(matchId)
                 return
             }
 
-            // 2명이면 스왑만 허용 (자리 중복 방지)
             val otherUserId = partRepo.findOtherActiveUserId(matchId, userId)
                 ?: throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
 
-            // 상대도 ready면 불가 (강제 해제 X)
             if (partRepo.isReady(matchId, otherUserId)) {
                 throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
             }
@@ -703,7 +614,6 @@ class BattleJooqService(
             val otherTeam = partRepo.findActiveTeam(matchId, otherUserId)
                 ?: throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
 
-            // 내가 원하는 팀이 "상대 팀"일 때만 swap 허용
             if (toTeam != otherTeam) {
                 throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_NOT_ALLOWED)
             }
@@ -713,13 +623,8 @@ class BattleJooqService(
                 throw ApiException(ErrorCode.BATTLE_TEAM_CHANGE_REQUIRES_NOT_READY)
             }
 
-            emitRoomEvent(
-                matchId,
-                RoomEvent(
-                    type = RoomEventType.TEAM_SWAPPED,
-                    matchId = matchId,
-                    payload = mapOf("a" to userId, "b" to otherUserId)
-                )
+            emitRoomEvent(matchId,
+                RoomEvent(RoomEventType.TEAM_SWAPPED, matchId, mapOf("a" to userId, "b" to otherUserId))
             )
             emitRoomSnapshot(matchId)
             return
@@ -728,13 +633,8 @@ class BattleJooqService(
         val updated = partRepo.updateTeam(matchId, userId, toTeam)
         if (updated == 0) throw ApiException(ErrorCode.BATTLE_NOT_PARTICIPANT)
 
-        emitRoomEvent(
-            matchId,
-            RoomEvent(
-                type = RoomEventType.TEAM_CHANGED,
-                matchId = matchId,
-                payload = mapOf("userId" to userId, "team" to toTeam.name)
-            )
+        emitRoomEvent(matchId,
+            RoomEvent(RoomEventType.TEAM_CHANGED, matchId, mapOf("userId" to userId, "team" to toTeam.name))
         )
         emitRoomSnapshot(matchId)
     }
@@ -753,14 +653,7 @@ class BattleJooqService(
 
     private fun emitRoomSnapshot(matchId: Long) {
         val snapshot = getRoomDetailForBroadcast(matchId)
-        emitRoomEvent(
-            matchId,
-            RoomEvent(
-                type = RoomEventType.ROOM_SNAPSHOT,
-                matchId = matchId,
-                payload = snapshot
-            )
-        )
+        emitRoomEvent(matchId, RoomEvent(RoomEventType.ROOM_SNAPSHOT, matchId, snapshot))
     }
 
     @Transactional
@@ -919,8 +812,8 @@ class BattleJooqService(
     @Transactional
     fun finishMatch(
         matchId: Long,
-        winner: BattleWinnerTeam,          // ✅ A/B/DRAW
-        endReason: BattleEndReason,        // ✅ enum
+        winner: BattleWinnerTeam,
+        endReason: BattleEndReason,
         lane0: Int, lane1: Int, lane2: Int,
         inputsA: Int, inputsB: Int,
         vsBot: Boolean,
@@ -962,38 +855,6 @@ class BattleJooqService(
         return true
     }
 
-    private fun broadcastStateIfAny(matchId: Long): Mono<Void> {
-        val key = RealtimeKeys.battle(matchId)
-
-        // 접속자 없으면 스킵
-        if (registry.connectedCount(key) == 0) return Mono.empty()
-
-        // 상태는 RUNNING일 때만 의미 있으니 가드
-        val status = matchRepo.findMatchStatus(matchId) ?: return Mono.empty()
-        if (status != BattleMatchStatus.RUNNING) return Mono.empty()
-
-        val snap = battleRedis.getLaneSnapshot(matchId)
-        val endsAt = battleRedis.getEndsAt(matchId)
-
-        val sumA = snap.lane0A + snap.lane1A + snap.lane2A
-        val sumB = snap.lane0B + snap.lane1B + snap.lane2B
-
-        val payload = WsStatePayload(
-            matchId = matchId,
-            endsAtEpochMs = endsAt,
-            lane0 = snap.lane0A + snap.lane0B,
-            lane1 = snap.lane1A + snap.lane1B,
-            lane2 = snap.lane2A + snap.lane2B,
-            sumA = sumA,
-            sumB = sumB,
-            inputsA = snap.inputsA,
-            inputsB = snap.inputsB,
-        )
-
-        val json = objectMapper.writeValueAsString(payload)
-        return registry.broadcast(key, json)
-    }
-
     private fun broadcastFinished(
         matchId: Long,
         winner: BattleWinnerTeam,
@@ -1001,10 +862,9 @@ class BattleJooqService(
         lane0: Int, lane1: Int, lane2: Int,
         inputsA: Int, inputsB: Int,
         extra: Map<String, Any?> = emptyMap()
-    ): Mono<Void> {
-        val key = RealtimeKeys.battle(matchId)
+    ) {
+        if (registry.getConnectedUserCount(matchId) == 0) return
 
-        if (registry.connectedCount(key) == 0) return Mono.empty()
         val payload = WsFinishedPayload(
             matchId = matchId,
             winner = winner,
@@ -1016,8 +876,9 @@ class BattleJooqService(
             inputsB = inputsB,
             extra = extra
         )
+
         val json = objectMapper.writeValueAsString(payload)
-        return registry.broadcast(key, json)
+        registry.broadcastJson(matchId, json)
     }
 
     @Transactional
@@ -1062,7 +923,7 @@ class BattleJooqService(
         battleRedis.clearMatchKeys(matchId)
         battleRedis.removeRunningMatch(matchId)
 
-        // WS FINISHED (구독자에게 즉시)
+        // ✅ WS FINISHED (즉시)
         broadcastFinished(
             matchId = matchId,
             winner = winner,
@@ -1070,13 +931,27 @@ class BattleJooqService(
             lane0 = lane0, lane1 = lane1, lane2 = lane2,
             inputsA = inputsA, inputsB = inputsB,
             extra = extra
-        ).subscribe()
+        )
 
         // SSE ROOM snapshot (WS 놓쳐도 동기화)
         emitRoomSnapshot(matchId)
 
         // SSE lobby 갱신
         emitLobbyRoomsChanged()
+    }
+
+    private fun detectEarlyWinner(s: LaneSnapshot, diffThreshold: Int = 50): BattleTeam? {
+        val sumA = s.lane0A + s.lane1A + s.lane2A
+        val sumB = s.lane0B + s.lane1B + s.lane2B
+
+        val diff = kotlin.math.abs(sumA - sumB)
+        if (diff < diffThreshold) return null
+
+        return when {
+            sumA > sumB -> BattleTeam.A
+            sumB > sumA -> BattleTeam.B
+            else -> null
+        }
     }
 
     private fun onRoomChangedForLobbyAndRoom(matchId: Long) {

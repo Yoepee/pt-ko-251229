@@ -40,6 +40,8 @@ class RedisConfig {
             return {1, c}
             """.trimIndent()
         )
+        script.resultType = List::class.java
+
         return script
     }
 }
