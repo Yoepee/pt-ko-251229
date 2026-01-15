@@ -1,6 +1,8 @@
 'use client';
 
+import { BattleGameView } from '@/components/BattleGameView';
 import { useAuth } from '@/hooks/useAuth';
+import { useBattleWebSocket } from '@/hooks/useBattleWebSocket';
 import {
     battleApi,
     RoomParticipant
@@ -163,6 +165,11 @@ export default function BattleRoomPage() {
         enabled: !!user && !isNaN(roomId),
     });
 
+    // WebSocket for Game
+    const { lastState, finishedData, disconnect: disconnectWs, sendInput, clearFinished } = useBattleWebSocket(
+        room?.status === 'RUNNING' || room?.status === 'FINISHED' ? roomId : null
+    );
+
     // Matching Timer for Ranked
     useEffect(() => {
         if (room?.matchType === 'RANKED' && room?.status === 'WAITING') {
@@ -230,6 +237,17 @@ export default function BattleRoomPage() {
         };
 
         eventSource.onerror = (err) => {
+            // 경기 종료 후 서버가 연결을 끊는 것은 정상이므로 에러 로그를 남기지 않음
+            if (eventSource.readyState === EventSource.CLOSED) {
+                return;
+            }
+            
+            // 결과 화면이 보이는 중이라면 이미 경기가 끝난 것이므로 무시
+            if (finishedData) {
+                eventSource.close();
+                return;
+            }
+
             console.error('Room SSE Connection Error:', err);
             eventSource.close();
         };
@@ -237,7 +255,7 @@ export default function BattleRoomPage() {
         return () => {
             eventSource.close();
         };
-    }, [user, roomId, queryClient]);
+    }, [user, roomId, queryClient, finishedData]);
 
     const { data: myState } = useQuery({
         queryKey: battleKeys.state.queryKey,
@@ -247,21 +265,31 @@ export default function BattleRoomPage() {
 
     // Auto Redirection based on MyState
     useEffect(() => {
-        if (!myState) return;
+        // 방 정보나 내 상태를 불러오는 중이면 리다이렉트 판단 보류
+        if (isRoomLoading || !myState || !room) return;
 
-        // 게임 중이 아니거나 로비 상태면 로비로 튕겨내기
-        if (myState.state === 'IDLE' || !myState.matchId) {
-            notifications.show({ title: '방 입장 불가', message: '참여 중인 전장이 없습니다. 로비로 이동합니다.', color: 'yellow' });
-            router.push('/battles');
-            return;
-        }
+        // 결과 화면 표시 중이면 리다이렉트 안 함
+        if (finishedData) return;
 
-        // 현재 방 번호와 내 상태의 방 번호가 다르면 내 방으로 강제 이동
-        if (myState.matchId !== roomId) {
-            notifications.show({ title: '위치 조정', message: '현재 참여 중인 전장으로 이동합니다.', color: 'blue' });
-            router.push(`/battles/room/${myState.matchId}`);
-        }
-    }, [myState, roomId, router]);
+        const handleRedirection = () => {
+            // 1. 게임 중이 아니거나 로비 상태면 로비로 튕겨내기
+            if (myState.state === 'IDLE' || !myState.matchId) {
+                notifications.show({ title: '방 입장 불가', message: '참여 중인 전장이 없습니다. 로비로 이동합니다.', color: 'yellow' });
+                router.push('/battles');
+                return;
+            }
+
+            // 2. 현재 방 번호와 내 상태의 방 번호가 다르면 내 방으로 강제 이동
+            if (myState.matchId !== roomId) {
+                notifications.show({ title: '위치 조정', message: '현재 참여 중인 전장으로 이동합니다.', color: 'blue' });
+                router.push(`/battles/room/${myState.matchId}`);
+            }
+        };
+
+        // 서버 상태 동기화를 위해 아주 짧은 지연 후 실행 (방 생성 직후 진입 시 race condition 방지)
+        const timer = setTimeout(handleRedirection, 500);
+        return () => clearTimeout(timer);
+    }, [myState, room, isRoomLoading, roomId, router, finishedData]);
 
     const { data: characters } = useQuery({
         queryKey: battleKeys.characters.queryKey,
@@ -339,6 +367,23 @@ export default function BattleRoomPage() {
                     </Button>
                 </Stack>
             </Center>
+        );
+    }
+
+    // Game View
+    if (room.status === 'RUNNING' || room.status === 'FINISHED' || finishedData) {
+        return (
+            <BattleGameView 
+                room={room} 
+                lastState={lastState} 
+                finishedData={finishedData} 
+                sendInput={sendInput}
+                onExit={() => {
+                    disconnectWs();
+                    clearFinished();
+                    router.push('/battles');
+                }}
+            />
         );
     }
 
