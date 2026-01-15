@@ -45,7 +45,7 @@ object SecurityConstants {
         "/.well-known/acme-challenge/**",
 
         // websocket handshake 경로
-        "/ws-chat/**",
+        "/ws/**",
 
         "/hikari-status",
 
@@ -55,5 +55,5 @@ object SecurityConstants {
     )
 
     // CORS를 적용할 경로
-    val CORS_PATHS = arrayOf("/api/**", "/ws-chat/**")
+    val CORS_PATHS = arrayOf("/api/**", "/ws/**")
 }
