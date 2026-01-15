@@ -86,4 +86,36 @@ class BattleRedisService(
         val allowed = (res[0] as Number).toInt()
         return allowed == 1
     }
+
+    override fun addRunningMatch(matchId: Long) {
+        redis.opsForSet().add("battle:running:set", matchId.toString())
+    }
+
+    override fun removeRunningMatch(matchId: Long) {
+        redis.opsForSet().remove("battle:running:set", matchId.toString())
+    }
+
+    override fun listRunningMatches(limit: Int): List<Long> {
+        val values = redis.opsForSet().members("battle:running:set") ?: emptySet()
+        return values.asSequence()
+            .mapNotNull { it.toLongOrNull() }
+            .take(limit)
+            .toList()
+    }
+
+    override fun markDisconnected(matchId: Long, userId: Long, untilEpochMs: Long) {
+        val key = "battle:$matchId:dc"
+        redis.opsForHash<String, String>().put(key, userId.toString(), untilEpochMs.toString())
+        redis.expire(key, java.time.Duration.ofSeconds(60))
+    }
+
+    override fun clearDisconnected(matchId: Long, userId: Long) {
+        val key = "battle:$matchId:dc"
+        redis.opsForHash<String, String>().delete(key, userId.toString())
+    }
+
+    override fun getDisconnectedUntil(matchId: Long, userId: Long): Long? {
+        val key = "battle:$matchId:dc"
+        return redis.opsForHash<String, String>().get(key, userId.toString())?.toLongOrNull()
+    }
 }

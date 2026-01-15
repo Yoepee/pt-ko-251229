@@ -1,5 +1,7 @@
 package com.blog.domain.battle.repository
 
+import com.blog.domain.battle.entity.BattleEndReason
+import com.blog.domain.battle.entity.BattleWinnerTeam
 import com.blog.jooq.Tables.BATTLE_MATCH_RESULTS
 import org.jooq.DSLContext
 import org.jooq.JSON
@@ -19,8 +21,8 @@ class BattleResultJooqRepository(
 
     fun insertResult(
         matchId: Long,
-        winnerTeam: String,
-        endReason: String,
+        winnerTeam: BattleWinnerTeam,
+        endReason: BattleEndReason,
         lane0: Int,
         lane1: Int,
         lane2: Int,
@@ -30,8 +32,8 @@ class BattleResultJooqRepository(
     ) {
         dsl.insertInto(BATTLE_MATCH_RESULTS)
             .set(BATTLE_MATCH_RESULTS.MATCH_ID, matchId)
-            .set(BATTLE_MATCH_RESULTS.WINNER_TEAM, winnerTeam)
-            .set(BATTLE_MATCH_RESULTS.END_REASON, endReason)
+            .set(BATTLE_MATCH_RESULTS.WINNER_TEAM, winnerTeam.name)
+            .set(BATTLE_MATCH_RESULTS.END_REASON, endReason.name)
             .set(BATTLE_MATCH_RESULTS.LANE0_FINAL, lane0)
             .set(BATTLE_MATCH_RESULTS.LANE1_FINAL, lane1)
             .set(BATTLE_MATCH_RESULTS.LANE2_FINAL, lane2)

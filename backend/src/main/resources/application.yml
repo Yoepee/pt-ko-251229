@@ -28,5 +28,8 @@ custom:
     refresh-expire-seconds: 604800
   cookie:
     secure: false
+    same-site: Lax
+    access-token-name: access_token
+    refresh-token-name: refresh_token
   cors:
     allowed-origins: ${CUSTOM__CORS__ALLOWED__ORIGINS:http://localhost:3000}
