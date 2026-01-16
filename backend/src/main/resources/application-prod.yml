@@ -18,4 +18,5 @@ spring:
 
 custom:
   cookie:
-    secure: false
+    secure: true
+    same-site: None

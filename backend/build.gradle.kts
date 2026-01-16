@@ -83,6 +83,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
+    // 모니터링
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+
 
     // jOOQ Codegen (DDLDatabase용)
     jooqGenerator("org.jooq:jooq-codegen:$jooqVersion")
