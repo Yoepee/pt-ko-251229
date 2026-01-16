@@ -5,7 +5,12 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "battle_seasons")
+@Table(
+    name = "battle_seasons",
+    uniqueConstraints = [
+        UniqueConstraint(name = "uq_battle_seasons_name", columnNames = ["name"])
+    ]
+)
 class BattleSeason(
     @Column(nullable = false, length = 100)
     var name: String,
