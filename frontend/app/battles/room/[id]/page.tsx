@@ -201,21 +201,26 @@ export default function BattleRoomPage() {
         const handleSseMessage = (event: MessageEvent) => {
             try {
                 const data = JSON.parse(event.data);
-                console.log(`[Room SSE] Event received:`, data.type, data);
+                const eventType = data.type || data.t || event.type;
+                console.log(`[Room SSE] Event received: ${eventType}`, data);
 
-                // 해당 방의 이벤트가 아니면 무시
-                if (data.matchId && Number(data.matchId) !== roomId) return;
+                // 해당 방의 이벤트가 아니면 무시 (matchId가 있는 경우에만 체크)
+                const eventMatchId = data.matchId || data.payload?.matchId;
+                if (eventMatchId && Number(eventMatchId) !== roomId) return;
 
-                if (data.type === 'ROOM_SNAPSHOT' && data.payload) {
-                    // 스냅샷 데이터 즉시 반영 (API 호출 절약 및 즉각적인 UI 응답)
+                // 스냅샷 데이터(payload)가 포함되어 있고 최소한의 구조가 갖춰져 있다면 즉시 반영
+                if (data.payload && data.payload.participants) {
+                    console.log(`[Room SSE] Updating room detail with payload from ${eventType}`);
                     queryClient.setQueryData(battleKeys.roomDetail(roomId).queryKey, data.payload);
                 }
                 
-                // 모든 상태 변화 이벤트에 대해 추가적으로 리프레시 수행하거나, 
-                // 스냅샷이 아닌 이벤트는 서버의 최신 정보로 동기화
-                if (data.type && data.type !== 'PING') {
+                // PING이 아닌 모든 이벤트에 대해 관련 쿼리 갱신
+                if (eventType && eventType !== 'PING') {
+                    // 유저 상태 정보는 항상 최신화 시도
                     queryClient.invalidateQueries({ queryKey: battleKeys.state.queryKey });
-                    if (data.type !== 'ROOM_SNAPSHOT') {
+                    
+                    // 스냅샷 데이터가 없었던 경우에만 명시적으로 룸 정보 리프레시
+                    if (!data.payload && eventType !== 'ROOM_SNAPSHOT') {
                         queryClient.invalidateQueries({ queryKey: battleKeys.roomDetail(roomId).queryKey });
                     }
                 }
@@ -387,10 +392,10 @@ export default function BattleRoomPage() {
         );
     }
 
-    const me = room.participants.find(p => p.userId === user.id);
+    const me = room.participants?.find(p => p.userId === user.id);
     const isOwner = !!me?.isOwner;
-    const teamA = room.participants.filter(p => p.team === 'A');
-    const teamB = room.participants.filter(p => p.team === 'B');
+    const teamA = room.participants?.filter(p => p.team === 'A') || [];
+    const teamB = room.participants?.filter(p => p.team === 'B') || [];
 
     const getCharIcon = (charId: number) => {
         const char = characters?.find(c => c.id === charId);

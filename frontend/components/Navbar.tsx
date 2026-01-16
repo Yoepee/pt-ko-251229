@@ -24,10 +24,10 @@ export function Navbar() {
        <div className="h-[60px] flex items-center px-5 border-b border-white/5">
             <Link href="/" className="no-underline flex items-center gap-2 group">
                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-105 transition-transform">
-                    V
+                    U
                 </div>
-                <Text fw={700} size="lg" c="white">
-                    Vote<span className="text-violet-400">Board</span>
+                <Text fw={800} size="lg" c="white" style={{ letterSpacing: '1px' }}>
+                    UPPICK
                 </Text>
             </Link>
        </div>
