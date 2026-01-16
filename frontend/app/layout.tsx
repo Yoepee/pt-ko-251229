@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VoteBoard",
+  title: "UPPICK",
   description: "Real-time voting platform",
 };
 
