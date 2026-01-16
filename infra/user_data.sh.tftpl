@@ -1,0 +1,370 @@
+#!/bin/bash
+set -euo pipefail
+
+# =========================================================
+# Uppick EC2 bootstrap (Amazon Linux 2023)
+# - Docker / docker-compose 설치
+# - common 네트워크
+# - Postgres/Redis/Prometheus/Grafana/NPM 구성 (기본)
+# - App(uppick-app-001/002)는 profile "app"로 분리 (ECR 준비 후 실행)
+# - SSM Parameter Store에서 .env 생성 (없으면 fallback)
+# =========================================================
+
+dnf update -y
+dnf install -y --allowerasing curl
+dnf install -y jq python3 awscli
+dnf install -y docker
+systemctl enable docker
+systemctl start docker
+
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+
+timedatectl set-timezone Asia/Seoul
+
+docker network create common >/dev/null 2>&1 || true
+
+mkdir -p /opt/uppick/scripts /opt/uppick/prometheus
+cd /opt/uppick
+
+# ---- prometheus config ----
+cat > /opt/uppick/prometheus/prometheus.yml <<'YAML'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "uppick-app"
+    metrics_path: "/actuator/prometheus"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["uppick-app-001:8080"]
+        labels:
+          env: "blue"
+      - targets: ["uppick-app-002:8080"]
+        labels:
+          env: "green"
+YAML
+
+# ---- docker-compose ----
+cat > /opt/uppick/docker-compose.yml <<'YAML'
+services:
+  npm_1:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npm_1
+    restart: unless-stopped
+    networks: [common]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    environment:
+      - TZ=Asia/Seoul
+      - INITIAL_ADMIN_EMAIL=$${NPM_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASSWORD=$${NPM_ADMIN_PASSWORD}
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+
+  postgres:
+    image: postgres:16
+    container_name: uppick-postgres
+    restart: unless-stopped
+    networks: [common]
+    environment:
+      POSTGRES_DB: $${POSTGRES_DB}
+      POSTGRES_USER: $${POSTGRES_USER}
+      POSTGRES_PASSWORD: $${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: uppick-redis
+    restart: unless-stopped
+    networks: [common]
+    command: redis-server --appendonly yes --requirepass $${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+
+  # ---- App (ECR 준비 후 실행) ----
+  uppick-app-001:
+    profiles: ["app"]
+    image: $${APP_IMAGE}
+    container_name: uppick-app-001
+    restart: unless-stopped
+    networks: [common]
+    env_file: [.env]
+    expose:
+      - "8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - TZ=Asia/Seoul
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+
+  uppick-app-002:
+    profiles: ["app"]
+    image: $${APP_IMAGE}
+    container_name: uppick-app-002
+    restart: unless-stopped
+    networks: [common]
+    env_file: [.env]
+    expose:
+      - "8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - TZ=Asia/Seoul
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: uppick-prometheus
+    restart: unless-stopped
+    networks: [common]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=2GB"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: uppick-grafana
+    restart: unless-stopped
+    networks: [common]
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Asia/Seoul
+      - GF_SECURITY_ADMIN_USER=$${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+networks:
+  common:
+    external: true
+
+volumes:
+  pgdata:
+  redisdata:
+  npm_data:
+  npm_letsencrypt:
+  prometheus_data:
+  grafana_data:
+YAML
+
+# ---- npm upsert script ----
+cat > /opt/uppick/scripts/npm-upsert.sh <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+NPM_BASE_URL="$${NPM_BASE_URL:-http://localhost:81}"
+EMAIL="$${NPM_ADMIN_EMAIL:?missing NPM_ADMIN_EMAIL}"
+PASS="$${NPM_ADMIN_PASSWORD:?missing NPM_ADMIN_PASSWORD}"
+AUTO_SSL="$${NPM_AUTO_SSL:-false}"
+
+declare -A HOSTS
+HOSTS["api.uppick.net"]="uppick-app-001:8080"
+HOSTS["grafana.uppick.net"]="uppick-grafana:3000"
+HOSTS["prometheus.uppick.net"]="uppick-prometheus:9090"
+
+login() {
+  local resp token
+  for i in {1..60}; do
+    resp="$(curl -sS "$${NPM_BASE_URL}/api/tokens" \
+      -H "Content-Type: application/json" \
+      -d "{\"identity\":\"$${EMAIL}\",\"secret\":\"$${PASS}\"}" || true)"
+
+    if echo "$${resp}" | jq -e . >/dev/null 2>&1; then
+      token="$(echo "$${resp}" | jq -r '.token // empty')"
+      if [ -n "$${token}" ]; then
+        echo "$${token}"
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  echo "NPM login failed. Last response: $${resp}" >&2
+  return 1
+}
+
+get_proxy_host_id() {
+  local token="$1"
+  local domain="$2"
+  curl -fsS "$${NPM_BASE_URL}/api/nginx/proxy-hosts" \
+    -H "Authorization: Bearer $${token}" \
+  | python3 - "$${domain}" <<'PY'
+import sys,json
+domain=sys.argv[1]
+items=json.load(sys.stdin)
+for it in items:
+    dns=it.get("domain_names") or []
+    if domain in dns:
+        print(it["id"]); sys.exit(0)
+print("")
+PY
+}
+
+upsert_proxy_host() {
+  local token="$1"
+  local domain="$2"
+  local fhost="$3"
+  local fport="$4"
+
+  local existing_id
+  existing_id="$$(get_proxy_host_id "$${token}" "$${domain}")"
+
+  local cert_id ssl_forced
+  if [ "$${AUTO_SSL}" = "true" ]; then
+    cert_id="new"
+    ssl_forced=true
+  else
+    cert_id="0"
+    ssl_forced=false
+  fi
+
+  local payload
+  payload="$$(cat <<JSON
+{
+  "domain_names": ["$${domain}"],
+  "forward_scheme": "http",
+  "forward_host": "$${fhost}",
+  "forward_port": $${fport},
+  "access_list_id": "0",
+  "certificate_id": "$${cert_id}",
+  "ssl_forced": $${ssl_forced},
+  "caching_enabled": false,
+  "block_exploits": true,
+  "allow_websocket_upgrade": true,
+  "http2_support": true,
+  "hsts_enabled": true,
+  "hsts_subdomains": true,
+  "advanced_config": "",
+  "meta": { "letsencrypt_agree": true, "dns_challenge": false }
+}
+JSON
+)"
+
+  if [ -n "$${existing_id}" ]; then
+    curl -fsS -X PUT "$${NPM_BASE_URL}/api/nginx/proxy-hosts/$${existing_id}" \
+      -H "Authorization: Bearer $${token}" \
+      -H "Content-Type: application/json" \
+      -d "$${payload}" > /dev/null
+  else
+    curl -fsS -X POST "$${NPM_BASE_URL}/api/nginx/proxy-hosts" \
+      -H "Authorization: Bearer $${token}" \
+      -H "Content-Type: application/json" \
+      -d "$${payload}" > /dev/null
+  fi
+}
+
+main() {
+  local token
+  token="$$(login)"
+
+  for domain in "$${!HOSTS[@]}"; do
+    IFS=":" read -r hp_host hp_port <<< "$${HOSTS[$${domain}]}"
+    upsert_proxy_host "$${token}" "$${domain}" "$${hp_host}" "$${hp_port}"
+  done
+}
+
+main
+SH
+chmod +x /opt/uppick/scripts/npm-upsert.sh
+
+# ---- env hint ----
+cat > /etc/profile.d/uppick.sh <<EOF
+export AWS_REGION="${region}"
+export AWS_DEFAULT_REGION="${region}"
+export SSM_ENV_PATH="${ssm_env_path}"
+EOF
+
+SSM_PATH="${ssm_env_path}"
+
+write_env_from_ssm() {
+  local path="$1"
+  local tmp="/tmp/ssm_env.json"
+
+  if ! aws ssm get-parameters-by-path \
+      --path "$path" \
+      --recursive \
+      --with-decryption \
+      --output json > "$tmp"; then
+    echo "SSM get-parameters-by-path failed. path=$path" >&2
+    return 1
+  fi
+
+  if ! jq -e . "$tmp" >/dev/null 2>&1; then
+    echo "SSM response is not valid JSON. First lines:" >&2
+    head -n 80 "$tmp" >&2
+    return 1
+  fi
+
+  jq -r '.Parameters[] | "\(.Name | split("/")[-1])=\(.Value // "")"' "$tmp" > /opt/uppick/.env
+
+  # 인프라만 올릴 때는 APP_IMAGE 없어도 OK
+  if ! grep -q '^APP_IMAGE=' /opt/uppick/.env; then
+    echo "WARN: APP_IMAGE is missing (OK for infra-only). Add later when enabling app profile." >&2
+  fi
+}
+
+if aws ssm get-parameters-by-path --path "$SSM_PATH" --recursive --with-decryption --max-items 1 --output json >/dev/null 2>&1; then
+  write_env_from_ssm "$SSM_PATH"
+else
+  cat > /opt/uppick/.env <<EOF
+# APP_IMAGE는 ECR 준비 후 채우면 됨 (infra-only에서는 없어도 됨)
+POSTGRES_DB=uppick
+POSTGRES_USER=uppick
+POSTGRES_PASSWORD=CHANGE_ME
+REDIS_PASSWORD=CHANGE_ME
+NPM_ADMIN_EMAIL=${npm_admin_email}
+NPM_ADMIN_PASSWORD=CHANGE_ME
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=CHANGE_ME
+CUSTOM__JWT__SECRET_KEY=CHANGE_ME
+CUSTOM__CORS__ALLOWED__ORIGINS=https://uppick.net,https://www.uppick.net
+NPM_AUTO_SSL=false
+EOF
+fi
+
+# ---- start infra stack (no app) ----
+cd /opt/uppick
+/usr/bin/docker-compose up -d
+
+# ---- wait for npm api ----
+echo "Waiting for NPM API (http://localhost:81/api/status) ..."
+for i in {1..180}; do
+  if curl -fsS "http://localhost:81/api/status" | jq -e . >/dev/null 2>&1; then
+    echo "NPM API is ready"
+    break
+  fi
+  sleep 2
+done
+
+# ---- upsert proxy hosts (optional; api.uppick.net은 app profile 켜기 전까진 502가 정상) ----
+export NPM_BASE_URL="http://localhost:81"
+set +e
+set -a
+source /opt/uppick/.env
+set +a
+/opt/uppick/scripts/npm-upsert.sh || echo "WARN: npm-upsert failed (retry manually later)"
+set -e
+
+echo "DONE"
