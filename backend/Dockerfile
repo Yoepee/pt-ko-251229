@@ -18,6 +18,8 @@ RUN ./gradlew --no-daemon dependencies || true
 
 # 3) 소스 전체 복사
 COPY . .
+# COPY . . 가 gradlew를 덮어쓸 수 있으니 다시 방어
+RUN sed -i 's/\r$//' ./gradlew && chmod +x ./gradlew
 
 # 4) 최종 빌드(1번만)
 RUN ./gradlew --no-daemon clean bootJar -x test
