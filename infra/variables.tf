@@ -39,3 +39,24 @@ variable "npm_admin_email" {
   type    = string
   default = "admin@example.com"
 }
+
+variable "github_owner" {
+  type    = string
+  default = "Yoepee"
+}
+
+variable "github_repo" {
+  type    = string
+  default = "pt-ko-251229"
+}
+
+variable "github_branch" {
+  type    = string
+  default = "main"
+}
+
+# GitHub Actions가 SendCommand 보낼 EC2 instance id
+variable "deploy_instance_id" {
+  type        = string
+  description = "EC2 instance id for deployment target (e.g. i-0123456789abcdef0)"
+}
