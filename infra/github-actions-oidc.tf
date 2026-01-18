@@ -93,13 +93,8 @@ resource "aws_iam_role_policy" "gha_deploy" {
         Action = [
           "ssm:SendCommand"
         ],
-        Resource = [
-          "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:document/AWS-RunShellScript",
-          "arn:aws:ec2:${var.region}:${data.aws_caller_identity.current.account_id}:instance/${var.deploy_instance_id}"
-        ]
+        Resource = "*"
       },
-
-      # (옵션) 배포 결과 확인용 - workflow에서 status 조회할 때 필요
       {
         Effect = "Allow",
         Action = [
