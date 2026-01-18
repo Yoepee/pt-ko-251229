@@ -2,40 +2,40 @@
 
 # ========== Stage 1: Build ==========
 FROM eclipse-temurin:21-jdk AS builder
-
 WORKDIR /app
 
-# gradle wrapper + 설정 먼저 복사 (캐시)
-COPY gradlew .
-COPY gradle gradle
+# 1) gradle wrapper + 설정 먼저 복사 (캐시)
+COPY gradlew ./
+COPY gradle ./gradle
 COPY build.gradle.kts settings.gradle.kts ./
-RUN chmod +x ./gradlew
 
-# 소스 전체 복사 (src만 복사하면 resources 등 누락될 수 있음)
+# Windows CRLF + 실행권한 방어
+RUN sed -i 's/\r$//' ./gradlew && chmod +x ./gradlew
+
+# 2) 의존성 캐시 (소스 없이도 가능한 작업만)
+#    bootJar가 아니라 dependencies/assemble 쪽으로 캐시를 태우는게 안전
+RUN ./gradlew --no-daemon dependencies || true
+
+# 3) 소스 전체 복사
 COPY . .
 
-# bootJar 빌드 (테스트는 상황 따라)
-RUN ./gradlew clean bootJar --no-daemon -x test
+# 4) 최종 빌드(1번만)
+RUN ./gradlew --no-daemon clean bootJar -x test
 
 
 # ========== Stage 2: Runtime ==========
 FROM eclipse-temurin:21-jre
-
 WORKDIR /app
 
-# Healthcheck용 curl
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-# 로그 디렉토리
 RUN mkdir -p /app/logs && chmod 755 /app/logs
 
-# non-root
 RUN useradd -r -u 10001 -g root spring
 USER spring
 
-# jar 복사
 COPY --from=builder /app/build/libs/*.jar /app/app.jar
 
 EXPOSE 8080
