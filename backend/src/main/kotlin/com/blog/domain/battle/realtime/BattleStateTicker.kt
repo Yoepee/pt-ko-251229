@@ -30,7 +30,7 @@ class BattleStateTicker(
         scheduler.scheduleAtFixedRate(
             ::broadcastTick,
             0,
-            50,
+            100,
             TimeUnit.MILLISECONDS
         )
 
