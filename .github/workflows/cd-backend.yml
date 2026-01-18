@@ -66,18 +66,10 @@ jobs:
             --parameters commands='[
               "set -euo pipefail",
               "cd /opt/uppick",
-          
-              # 1) .env 재생성
               "aws ssm get-parameters-by-path --path \"'"${SSM_ENV_PATH}"'\" --recursive --with-decryption --output json > /tmp/ssm_env.json",
               "jq -r \".Parameters[] | \\\"\\(.Name | split(\\\"/\\\")[-1])=\\(.Value // \\\"\\\")\\\"\" /tmp/ssm_env.json > .env",
-          
-              # 2) ECR 재로그인 (토큰 만료 방지)
               "aws ecr get-login-password --region ap-northeast-2 | sudo docker login --username AWS --password-stdin 109936653790.dkr.ecr.ap-northeast-2.amazonaws.com",
-          
-              # 3) pull + recreate
               "sudo docker-compose --profile app pull uppick-app-001 uppick-app-002",
               "sudo docker-compose --profile app up -d --no-deps --force-recreate uppick-app-001 uppick-app-002",
-          
-              # 4) 정리
               "sudo docker image prune -af || true"
             ]'
