@@ -15,16 +15,18 @@ import {
     Progress,
     Stack,
     Text,
+    ThemeIcon,
     Title
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowLeft, IconCheck, IconClock, IconTrophy } from '@tabler/icons-react';
+import { IconArrowLeft, IconCheck, IconClock, IconRotate, IconTrophy } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 dayjs.extend(relativeTime);
 
@@ -43,13 +45,16 @@ export default function VoteDetailPage() {
     enabled: !isNaN(pollId),
   });
 
+  const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
+
   // Mutations
   const voteMutation = useMutation({
-    mutationFn: (optionId: number) => pollApi.vote(pollId, { optionIds: [optionId] }),
+    mutationFn: (optionIds: number[]) => pollApi.vote(pollId, { optionIds }),
     onSuccess: () => {
       notifications.show({ title: '투표 완료!', message: '당신의 의견이 성공적으로 반영되었습니다.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: pollKeys.detail(pollId).queryKey });
       queryClient.invalidateQueries({ queryKey: pollKeys.all.queryKey });
+      setSelectedOptionIds([]);
     },
     onError: (err: AxiosError<ApiResponse<null>>) => {
       notifications.show({ 
@@ -83,14 +88,54 @@ export default function VoteDetailPage() {
   const isBinary = poll.pollType === PollType.VOTE;
   const isEnded = dayjs(poll.endsAt).isBefore(dayjs());
   const totalVotes = poll.stats.totalVotes;
+  const maxSelections = poll.maxSelections || 1;
+  const myVotedOptionIds = poll.stats.myVoteOptionIds || [];
+  const hasVoted = poll.stats.myVoted || myVotedOptionIds.length > 0;
+  const canChange = poll.allowChange;
+  const isSingleSelect = isBinary || maxSelections === 1;
 
-  const handleVote = (optionId: number) => {
+  const handleToggleOption = (optionId: number) => {
     if (!user && !poll.allowAnonymous) {
       notifications.show({ title: '로그인이 필요합니다', message: '이 투표에 참여하려면 로그인이 필요합니다.', color: 'yellow' });
       router.push('/login');
       return;
     }
-    voteMutation.mutate(optionId);
+
+    if (isEnded) return;
+    if (hasVoted && !canChange) {
+        notifications.show({ title: '변경 불가', message: '이미 투표에 참여하셨으며, 투표 변경이 허용되지 않는 투표입니다.', color: 'gray' });
+        return;
+    }
+
+    if (isSingleSelect) {
+        voteMutation.mutate([optionId]);
+        return;
+    }
+
+    setSelectedOptionIds((prev: number[]) => {
+      if (prev.includes(optionId)) {
+        return prev.filter((id: number) => id !== optionId);
+      }
+      
+      if (prev.length >= maxSelections) {
+        notifications.show({ 
+            title: '선택 제한', 
+            message: `최대 ${maxSelections}개까지만 선택할 수 있습니다.`, 
+            color: 'orange' 
+        });
+        return prev;
+      }
+      
+      return [...prev, optionId];
+    });
+  };
+
+  const handleSubmitVote = () => {
+    if (selectedOptionIds.length === 0) {
+        notifications.show({ message: '최소 한 개의 항목을 선택해주세요.', color: 'orange' });
+        return;
+    }
+    voteMutation.mutate(selectedOptionIds);
   };
 
   return (
@@ -113,7 +158,7 @@ export default function VoteDetailPage() {
             gradient={isBinary ? { from: 'blue', to: 'cyan' } : { from: 'violet', to: 'grape' }}
             mb="md"
           >
-            {isBinary ? '찬반 투표' : '순위 선정'}
+            {isBinary ? '찬반 투표' : (maxSelections > 1 ? `다중 선택 (${maxSelections})` : '순위 선정')}
           </Badge>
           
           <Title className="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
@@ -141,6 +186,9 @@ export default function VoteDetailPage() {
                 <IconCheck size={16} className="text-gray.5" />
                 <Text size="sm" c="dimmed">{totalVotes.toLocaleString()}명 참여</Text>
              </Group>
+             {hasVoted && (
+                 <Badge color="green" variant="light" size="sm" leftSection={<IconCheck size={12}/>}>투표 참여 완료</Badge>
+             )}
           </Group>
         </div>
 
@@ -159,6 +207,8 @@ export default function VoteDetailPage() {
                 const percent = totalVotes > 0 ? (isLeft ? (poll.results?.yesPercent ?? 0) : (poll.results?.noPercent ?? 0)) : 0;
                 const count = isLeft ? (poll.results?.yesCount ?? 0) : (poll.results?.noCount ?? 0);
                const color = isLeft ? 'blue' : 'cyan';
+               const isSelected = selectedOptionIds.includes(option.id);
+               const isVoted = myVotedOptionIds.includes(option.id);
                
                return (
                  <Card 
@@ -166,9 +216,13 @@ export default function VoteDetailPage() {
                     padding="xl" 
                     radius="lg" 
                     className={`
-                        group relative overflow-hidden transition-all duration-300 border-white/10 bg-[#1A1B1E]
-                        ${isLeft ? 'hover:border-blue-500/50 hover:shadow-[0_0_30px_-10px_var(--mantine-color-blue-9)]' : 'hover:border-cyan-500/50 hover:shadow-[0_0_30px_-10px_var(--mantine-color-cyan-9)]'}
+                        group relative overflow-hidden transition-all duration-300 border-2 bg-[#1A1B1E]
+                        ${!isEnded && (!hasVoted || canChange) ? 'cursor-pointer' : 'cursor-default'}
+                        ${isSelected 
+                            ? (isLeft ? 'border-blue-500 shadow-[0_0_30px_-10px_var(--mantine-color-blue-9)]' : 'border-cyan-500 shadow-[0_0_30px_-10px_var(--mantine-color-cyan-9)]') 
+                            : 'border-white/10 hover:border-white/20'}
                     `}
+                    onClick={() => handleToggleOption(option.id)}
                  >
                     {/* Background Progress Fill */}
                     <div 
@@ -177,9 +231,16 @@ export default function VoteDetailPage() {
                     />
                     
                     <Stack align="center" gap="md" className="relative z-10 py-6">
-                        <Text size="xl" fw={700} ta="center" className="uppercase tracking-wide">
-                            {option.text}
-                        </Text>
+                        <Group justify="center" gap="xs">
+                            <Text size="xl" fw={700} ta="center" className="uppercase tracking-wide">
+                                {option.text}
+                            </Text>
+                            {(isSelected || isVoted) && <IconCheck size={24} className={isLeft ? 'text-blue-500' : 'text-cyan-500'} />}
+                        </Group>
+
+                        {isVoted && (
+                             <Badge size="xs" color={color} variant="filled">내 투표</Badge>
+                        )}
                         
                         <div className="text-4xl font-black text-white">
                             {Math.round(percent)}%
@@ -187,18 +248,11 @@ export default function VoteDetailPage() {
                         
                         <Text c="dimmed" size="sm" mb="md">{count.toLocaleString()} 표</Text>
 
-                        <Button 
-                            fullWidth 
-                            size="md" 
-                            radius="xl" 
-                            color={color}
-                            variant={isEnded ? 'light' : 'filled'}
-                            disabled={isEnded || voteMutation.isPending}
-                            onClick={() => handleVote(option.id)}
-                            className="transition-transform active:scale-95"
-                        >
-                            {isEnded ? '종료됨' : '투표하기'}
-                        </Button>
+                        {!isEnded && (!hasVoted || canChange) && (
+                            <Text size="xs" fw={700} c={color} className="uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                {isSelected ? '선택 취소' : '선택하기'}
+                            </Text>
+                        )}
                     </Stack>
                  </Card>
                );
@@ -217,8 +271,10 @@ export default function VoteDetailPage() {
                         const count = resFromItems?.count ?? resFromOptions?.count ?? opt.voteCount ?? 0;
                         const percent = resFromItems ? resFromItems.percent : (totalVotes > 0 ? (count / totalVotes) * 100 : 0);
                         const rank = resFromItems?.rank ?? resFromOptions?.rank;
+                        const isSelected = selectedOptionIds.includes(opt.id);
+                        const isVoted = myVotedOptionIds.includes(opt.id);
                         
-                        return { ...opt, count, percent, rank };
+                        return { ...opt, count, percent, rank, isSelected, isVoted };
                     })
                     .sort((a, b) => (b.count || 0) - (a.count || 0))
                     .map((item, index) => {
@@ -231,7 +287,12 @@ export default function VoteDetailPage() {
                             p="md" 
                             radius="md" 
                             bg="#1A1B1E" 
-                            className={`border border-white/5 relative overflow-hidden group hover:border-violet-500/30 transition-colors`}
+                            onClick={() => handleToggleOption(item.id)}
+                            className={`
+                                border transition-all relative overflow-hidden group 
+                                ${!isEnded && (!hasVoted || canChange) ? 'cursor-pointer' : 'cursor-default'}
+                                ${item.isSelected ? 'border-violet-500 bg-violet-500/5' : 'border-white/5 hover:border-white/10'}
+                            `}
                         >
                             {/* Progress bar background */}
                             <div 
@@ -251,30 +312,65 @@ export default function VoteDetailPage() {
                                 </div>
 
                                 <div className="flex-1 min-w-0">
-                                    <Text fw={600} size="lg" truncate>{item.text}</Text>
+                                    <Group gap="xs" wrap="nowrap">
+                                        <Text fw={600} size="lg" truncate>{item.text}</Text>
+                                        {item.isVoted && (
+                                            <Badge size="xs" color="violet" variant="filled">내 투표</Badge>
+                                        )}
+                                    </Group>
                                     <Group gap="xs">
                                         <Progress value={item.percent} size="sm" radius="xl" color="violet" className="flex-1 max-w-[100px]" />
                                         <Text size="xs" c="dimmed">{item.count.toLocaleString()} 표 ({Math.round(item.percent)}%)</Text>
                                     </Group>
                                 </div>
 
-                                {!isEnded && (
-                                    <Button 
-                                        size="sm" 
-                                        variant="light" 
-                                        color="violet" 
-                                        radius="xl"
-                                        loading={voteMutation.isPending}
-                                        onClick={() => handleVote(item.id)}
-                                    >
-                                        투표
-                                    </Button>
+                                {item.isSelected ? (
+                                    <ThemeIcon variant="filled" color="violet" radius="xl">
+                                        <IconCheck size={16} />
+                                    </ThemeIcon>
+                                ) : (
+                                    !isEnded && (!hasVoted || canChange) && (
+                                        <div className="w-6 h-6 rounded-full border-2 border-white/10 group-hover:border-violet-500/50 transition-colors" />
+                                    )
                                 )}
                             </Group>
                         </Paper>
                     );
                 })}
             </Stack>
+        )}
+
+        {/* Floating Submit Button (Multi-select only) */}
+        {!isEnded && !isSingleSelect && (
+            <div className="sticky bottom-8 left-0 right-0 z-50 flex justify-center px-4">
+                {hasVoted && !canChange ? (
+                    <Button
+                        size="xl"
+                        radius="xl"
+                        color="gray"
+                        variant="light"
+                        className="shadow-2xl px-12 opacity-80"
+                        disabled
+                        leftSection={<IconCheck size={20} />}
+                    >
+                        투표 완료 (변경 불가)
+                    </Button>
+                ) : (
+                    <Button
+                        size="xl"
+                        radius="xl"
+                        className="shadow-2xl px-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:scale-105 transition-transform"
+                        disabled={selectedOptionIds.length === 0 || voteMutation.isPending}
+                        loading={voteMutation.isPending}
+                        onClick={handleSubmitVote}
+                        leftSection={<IconRotate size={20} />}
+                    >
+                        {selectedOptionIds.length > 0 
+                            ? `${selectedOptionIds.length}개 항목으로 ${hasVoted ? '변경하기' : '투표하기'}`
+                            : (hasVoted ? '변경할 항목을 선택해주세요' : (maxSelections > 1 ? '항목을 선택해주세요' : '투표하기'))}
+                    </Button>
+                )}
+            </div>
         )}
 
         {/* Metadata Footer */}
