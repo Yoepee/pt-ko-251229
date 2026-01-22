@@ -4,6 +4,7 @@ import com.blog.domain.poll.dto.request.PollListRequest
 import com.blog.domain.poll.dto.response.OptionCountRow
 import com.blog.domain.poll.dto.response.RankingPreviewRaw
 import com.blog.domain.poll.dto.response.YesNoCountRaw
+import java.time.LocalDate
 
 interface PollJooqRepository {
     fun fetchTotalVotes(pollIds: List<Long>): Map<Long, Long>
@@ -25,4 +26,6 @@ interface PollJooqRepository {
         limit: Int,
         desc: Boolean
     ): List<Long>
+    fun insertDailyPoll(day: LocalDate, seq: Int, pollId: Long)
+    fun existsDailyPoll(day: LocalDate, seq: Int): Boolean
 }
