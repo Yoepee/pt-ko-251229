@@ -5,10 +5,17 @@ import com.blog.domain.poll.entity.PollType
 import com.blog.domain.poll.entity.PollVisibility
 import com.blog.domain.poll.repository.PollJooqRepository
 import com.blog.domain.poll.schedular.DailyPollProperties
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
+@ConditionalOnProperty(
+    prefix = "custom.daily-poll",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = false
+)
 class DailyPollService(
     private val pollService: PollService,
     private val pollJooqRepository: PollJooqRepository,

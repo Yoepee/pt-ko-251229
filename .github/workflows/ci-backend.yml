@@ -52,7 +52,7 @@ jobs:
         run: ./gradlew generateJooq
 
       - name: Test
-        run: ./gradlew test
+        run: ./gradlew test --stacktrace --info
 
       - name: Build
         run: ./gradlew build
