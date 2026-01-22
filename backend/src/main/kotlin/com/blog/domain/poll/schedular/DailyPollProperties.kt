@@ -1,7 +1,9 @@
 package com.blog.domain.poll.schedular
 
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.stereotype.Component
 
+@Component
 @ConfigurationProperties(prefix = "custom.daily-poll")
 data class DailyPollProperties(
     var enabled: Boolean = true,

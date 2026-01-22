@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Configuration
 import java.util.*
 
 @Configuration
-@EnableConfigurationProperties(DailyPollProperties::class)
 @ConditionalOnProperty(prefix = "custom.daily-poll", name = ["enabled"], havingValue = "true", matchIfMissing = true)
 class DailyPollQuartzConfig(
     private val props: DailyPollProperties
