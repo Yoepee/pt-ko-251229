@@ -11,6 +11,8 @@ import com.blog.jooq.tables.Votes.VOTES
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.*
 import org.springframework.stereotype.Repository
+import java.sql.Date
+import java.time.LocalDate
 
 @Repository
 class PollJooqRepositoryImpl(
@@ -254,5 +256,25 @@ class PollJooqRepositoryImpl(
         }
 
         return c
+    }
+
+    override fun existsDailyPoll(day: LocalDate, seq: Int): Boolean {
+        return dsl.fetchExists(
+            selectOne()
+                .from(table("daily_polls"))
+                .where(field("day").cast(Date::class.java).eq(java.sql.Date.valueOf(day)))
+                .and(field("seq", Int::class.java).eq(seq))
+        )
+    }
+
+    override fun insertDailyPoll(day: LocalDate, seq: Int, pollId: Long) {
+        dsl.insertInto(table("daily_polls"))
+            .columns(
+                field("day"),
+                field("seq"),
+                field("poll_id")
+            )
+            .values(java.sql.Date.valueOf(day), seq, pollId)
+            .execute()
     }
 }

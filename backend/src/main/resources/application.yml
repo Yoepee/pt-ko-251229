@@ -12,6 +12,22 @@ spring:
     locations: classpath:db/migration, classpath:db/seed
     baseline-on-migrate: true
 
+  quartz:
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    properties:
+      org:
+        quartz:
+          scheduler:
+            instanceName: uppickScheduler
+            instanceId: AUTO
+          jobStore:
+            driverDelegateClass: org.quartz.impl.jdbcjobstore.PostgreSQLDelegate
+            tablePrefix: QRTZ_
+            isClustered: true
+            clusterCheckinInterval: 20000
+
 logging:
   level:
     org.springframework.boot.context.config: DEBUG
@@ -47,3 +63,9 @@ custom:
     refresh-token-name: refresh_token
   cors:
     allowed-origins: ${CUSTOM__CORS__ALLOWED__ORIGINS:http://localhost:3000}
+  daily-poll:
+    enabled: true
+    zone: Asia/Seoul
+    creator-user-id: 1
+    cron: 0 5 * * * ?
+    count: 2

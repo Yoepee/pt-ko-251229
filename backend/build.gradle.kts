@@ -86,6 +86,8 @@ dependencies {
     // 모니터링
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
+    // Quartz
+    implementation("org.springframework.boot:spring-boot-starter-quartz")
 
     // jOOQ Codegen (DDLDatabase용)
     jooqGenerator("org.jooq:jooq-codegen:$jooqVersion")
