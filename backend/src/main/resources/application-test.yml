@@ -11,6 +11,7 @@ spring:
     enabled: false
   quartz:
     auto-startup: false
+    job-store-type: memory
 
 custom:
   daily-poll:
