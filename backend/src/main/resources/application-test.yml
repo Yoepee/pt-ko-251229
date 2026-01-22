@@ -9,10 +9,3 @@ spring:
       ddl-auto: none
   flyway:
     enabled: false
-  quartz:
-    auto-startup: false
-    job-store-type: memory
-
-custom:
-  daily-poll:
-    enabled: false

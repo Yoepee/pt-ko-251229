@@ -35,7 +35,7 @@ class DailyPollService(
         // 1번: 네가 말한 "오늘 기분 어때?"
         if (seq == 1) {
             return PollCreateRequest(
-                title = "[오늘의 투표] 오늘 기분 어때? (${today})",
+                title = "[오늘의 투표] 오늘 기분 어때요? (${today})",
                 description = null,
                 categoryId = null,
                 pollType = PollType.RANK,
@@ -56,7 +56,7 @@ class DailyPollService(
 
         // 2번: 예시 하나 더 (원하면 바꾸면 됨)
         return PollCreateRequest(
-            title = "[오늘의 투표] 오늘 뭐 먹을래? (${today})",
+            title = "[오늘의 투표] 오늘 뭐 먹을건가요? (${today})",
             description = null,
             categoryId = null,
             pollType = PollType.RANK,
