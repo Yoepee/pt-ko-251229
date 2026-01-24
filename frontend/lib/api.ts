@@ -226,7 +226,7 @@ export const pollApi = {
     const response = await apiClient.post<ApiResponse<null>>(`/api/v1/polls/${id}/votes`, data);
     return response.data;
   },
-  getRankings: async (params: { range: RankingRange; track: RankingTrack; type?: PollType; page?: number; size?: number }) => {
+  getRankings: async (params: { range: RankingRange; track: RankingTrack; type?: PollType; categoryId?: number; sort?: string | string[]; page?: number; size?: number }) => {
     const response = await apiClient.get<ApiResponse<PageResponse<Poll>>>(`/api/v1/polls/rankings`, { params });
     return response.data.data;
   }
