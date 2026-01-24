@@ -116,8 +116,7 @@ export default function RankingsPage() {
                             onChange={(val: string | null) => setSortBy(val || 'id,desc')}
                             data={[
                                 { label: '최신순', value: 'id,desc' },
-                                { label: '마감 임박순', value: 'endsAt,asc' },
-                                { label: '누적 투표순', value: 'popular,desc' }
+                                { label: '마감 임박순', value: 'endsAt,asc' }
                             ]}
                             radius="md"
                             variant="filled"
